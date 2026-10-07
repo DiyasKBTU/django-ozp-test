@@ -48,11 +48,30 @@ logger = logging.getLogger(__name__)
 
 
 def default_subject():
-    """
-    Бірінші белсенді пән (реті бойынша — информатика). Оқытушының пән
-    ауыстырғышы (10-кезең) жасалғанша жаңа контексттер осы пәнге жазылады.
-    """
+    """Бірінші белсенді пән (реті бойынша — информатика): басты беттегі мәлімет үшін."""
     return Subject.objects.filter(is_active=True).first()
+
+
+def teacher_subjects(user):
+    """
+    Оқытушыға ашық белсенді пәндер: әкімшіге (is_superuser) — барлығы,
+    оқытушыға — admin-де тағайындалғандары (Profile.subjects).
+    """
+    subjects = Subject.objects.filter(is_active=True)
+    if user.is_superuser:
+        return subjects
+    return subjects.filter(teacher_profiles__user=user)
+
+
+def choose_subject(subjects, subject_id):
+    """
+    Оқытушы беттерінің пәні: сессияда сақталған пән (subject_id) оқытушыға
+    ашық болса — сол, әйтпесе бірінші пәні. Пәні жоқ болса — None.
+    """
+    for subject in subjects:
+        if subject.pk == subject_id:
+            return subject
+    return subjects[0] if subjects else None
 
 
 # ---------- Сұрақтар ----------
@@ -113,18 +132,18 @@ def toggle_question_active(question):
 # ---------- Банк толуы ----------
 
 
-def full_contexts(language):
-    """Тестке жарайтын контексттер: белсенді және дәл 5 белсенді сұрағы бар."""
+def full_contexts(subject, language):
+    """Тестке жарайтын контексттер: пәннің белсенді, дәл 5 белсенді сұрағы бар контексттері."""
     return (
-        Context.objects.filter(is_active=True, language=language)
+        Context.objects.filter(subject=subject, is_active=True, language=language)
         .annotate(active_count=Count("questions", filter=Q(questions__is_active=True)))
         .filter(active_count=QUESTIONS_PER_CONTEXT)
     )
 
 
-def bank_coverage():
+def bank_coverage(subject):
     """
-    Банк толуы: әр тақырыпша × тіл × деңгей бойынша белсенді жеке сұрақтар саны.
+    Пәннің банк толуы: әр тақырыпша × тіл × деңгей бойынша белсенді жеке сұрақтар саны.
 
     Жетіспейтін жерлер `missing=True` деп белгіленеді:
     - деңгей ұяшығы — сұрақ мүлде жоқ болса;
@@ -138,7 +157,9 @@ def bank_coverage():
     # (тақырыпша id, тіл, деңгей) → сұрақ саны
     counts = {}
     grouped = (
-        Question.objects.filter(is_active=True, context__isnull=True)
+        Question.objects.filter(
+            subtopic__topic__subject=subject, is_active=True, context__isnull=True
+        )
         .values("subtopic_id", "language", "level")
         .annotate(total=Count("id"))
     )
@@ -148,7 +169,7 @@ def bank_coverage():
     # Кесте жолдары: ұяшықтар реті — kk: A, B, C, Σ, ru: A, B, C, Σ
     rows = []
     level_totals = {(language, level): 0 for language in languages for level in levels}
-    for subtopic in Subtopic.objects.select_related("topic"):
+    for subtopic in Subtopic.objects.filter(topic__subject=subject).select_related("topic"):
         cells = []
         for language in languages:
             subtopic_total = 0
@@ -186,7 +207,7 @@ def bank_coverage():
 
     contexts = []
     for language, label in Language.choices:
-        count = full_contexts(language).count()
+        count = full_contexts(subject, language).count()
         contexts.append(
             {"label": label, "count": count, "missing": count < MIN_CONTEXTS}
         )
@@ -285,7 +306,7 @@ def bank_error(language):
     )
 
 
-def choose_contexts(language, rng):
+def choose_contexts(subject, language, rng):
     """
     1-қадам: 2 толық контекстті кездейсоқ таңдайды.
 
@@ -293,7 +314,7 @@ def choose_contexts(language, rng):
     сұрақтармен квотаны дәл толтыруға болады. Қайтарады: контексттер тізімі
     және әр контекстің сұрақтары {контекст id: [(сұрақ id, деңгей), ...]}.
     """
-    contexts = list(full_contexts(language))
+    contexts = list(full_contexts(subject, language))
     if len(contexts) < CONTEXTS_PER_TEST:
         logger.warning("Банкте «%s» тілінде толық контекст жеткіліксіз.", language)
         raise bank_error(language)
@@ -342,7 +363,7 @@ def find_swap(chosen, pool, remaining):
     return None
 
 
-def choose_single_questions(language, quota, rng):
+def choose_single_questions(subject, language, quota, rng):
     """
     3–4-қадамдар: 20 тақырыпшаның әрқайсысынан 2 жеке сұрақ.
 
@@ -354,12 +375,17 @@ def choose_single_questions(language, quota, rng):
     Қайтарады: {тақырыпша id: [(сұрақ id, деңгей), ...]} тақырыпша ретімен.
     """
     # Бос сұрақтар: тақырыпша → деңгей → сұрақ id тізімі (кездейсоқ ретпен)
-    pool = {
-        subtopic_id: {level: [] for level in Level.values}
-        for subtopic_id in Subtopic.objects.order_by("number").values_list("id", flat=True)
-    }
+    subtopic_ids = (
+        Subtopic.objects.filter(topic__subject=subject)
+        .order_by("number")
+        .values_list("id", flat=True)
+    )
+    pool = {subtopic_id: {level: [] for level in Level.values} for subtopic_id in subtopic_ids}
     rows = Question.objects.filter(
-        language=language, is_active=True, context__isnull=True
+        subtopic__topic__subject=subject,
+        language=language,
+        is_active=True,
+        context__isnull=True,
     ).values_list("id", "subtopic_id", "level")
     for question_id, subtopic_id, level in rows:
         pool[subtopic_id][level].append(question_id)
@@ -417,9 +443,10 @@ def choose_single_questions(language, quota, rng):
     return chosen
 
 
-def build_variant(language, rng=None):
+def build_variant(subject, language, rng=None):
     """
-    Нұсқа құру алгоритмі (TZ.md, 4-бөлім), тек берілген тілдегі белсенді сұрақтардан.
+    Нұсқа құру алгоритмі (TZ.md, 4-бөлім), тек берілген пән мен тілдегі
+    белсенді сұрақтардан.
 
     Қайтарады: 50 сұрақтың id тізімі тест ретімен — 1–40 жеке сұрақтар
     тақырыпша ретімен (01–20), 41–50 екі контекстің сұрақтары.
@@ -429,7 +456,7 @@ def build_variant(language, rng=None):
         rng = random.Random()
 
     # 1-қадам: 2 контекст және олардың 10 сұрағы
-    contexts, context_questions = choose_contexts(language, rng)
+    contexts, context_questions = choose_contexts(subject, language, rng)
 
     # 2-қадам: контекст сұрақтарының деңгейін санап, қалған квотаны есептеу
     context_levels = Counter(
@@ -438,7 +465,7 @@ def build_variant(language, rng=None):
     quota = {level: LEVEL_QUOTA[level] - context_levels[level] for level in Level.values}
 
     # 3–4-қадамдар: әр тақырыпшадан 2 жеке сұрақ
-    chosen = choose_single_questions(language, quota, rng)
+    chosen = choose_single_questions(subject, language, quota, rng)
 
     # 5-қадам: жеке сұрақтар тақырыпша ретімен, соңында контексттер
     question_ids = [question_id for items in chosen.values() for question_id, _level in items]
@@ -451,7 +478,7 @@ def build_variant(language, rng=None):
     return question_ids
 
 
-def variant_summary(question_ids):
+def variant_summary(subject, question_ids):
     """
     Нұсқаның қорытындысы (оқытушының «Үлгі нұсқа» беті үшін): сұрақтар тест
     ретімен және ережелердің орындалуы — сұрақ саны, A/B/C квотасы, әр
@@ -482,7 +509,7 @@ def variant_summary(question_ids):
             "count": single_counts[subtopic.pk],
             "ok": single_counts[subtopic.pk] == SINGLE_QUESTIONS_PER_SUBTOPIC,
         }
-        for subtopic in Subtopic.objects.select_related("topic")
+        for subtopic in Subtopic.objects.filter(topic__subject=subject).select_related("topic")
     ]
 
     # Контексттер нұсқадағы ретімен (dict кірістіру ретін сақтайды)
@@ -518,6 +545,13 @@ def variant_summary(question_ids):
     }
 
 
+def attempt_deadline(session, started_at):
+    """Тест мерзімі: min(басталған уақыт + пәннің тест уақыты, сессияның жабылуы)."""
+    return min(
+        started_at + timedelta(minutes=session.subject.duration_minutes), session.closes_at
+    )
+
+
 @transaction.atomic
 def create_attempt(user, session, language, now=None, rng=None):
     """
@@ -535,7 +569,7 @@ def create_attempt(user, session, language, now=None, rng=None):
     if Attempt.objects.filter(user=user, session=session).exists():
         raise AttemptError(_("Сіз бұл сессияда тестті бұрын бастағансыз."))
 
-    question_ids = build_variant(language, rng)
+    question_ids = build_variant(session.subject, language, rng)
 
     try:
         # Екі сұраныс қатар келсе (батырма екі рет басылса), екіншісі
@@ -546,10 +580,7 @@ def create_attempt(user, session, language, now=None, rng=None):
                 session=session,
                 language=language,
                 started_at=now,
-                deadline=min(
-                    now + timedelta(minutes=session.subject.duration_minutes),
-                    session.closes_at,
-                ),
+                deadline=attempt_deadline(session, now),
             )
     except IntegrityError:
         raise AttemptError(_("Сіз бұл сессияда тестті бұрын бастағансыз."))
@@ -770,6 +801,7 @@ def write_results_csv(attempts, output):
             _("Студент"),
             _("Логин"),
             _("Топ"),
+            _("Пән"),
             _("Сессия"),
             _("Тест тілі"),
             _("Басталды"),
@@ -792,6 +824,7 @@ def write_results_csv(attempts, output):
                 row["student"],
                 attempt.user.username,
                 row["group"] or "",
+                attempt.session.subject.name,
                 attempt.session.title,
                 attempt.get_language_display(),
                 local(attempt.started_at),

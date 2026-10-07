@@ -25,7 +25,9 @@
 - `Subject` (apps.quiz): `code`, `name_kk`, `name_ru`, `duration_minutes`, `uses_formulas`, `order`, `is_active`.
 - `Topic`, `Context`, `ExamSession`, `StudyGroup` — `subject` FK (міндетті, PROTECT). `Question`-да пән жоқ: `question.subtopic.topic.subject`; контекст пен сұрақтың пәні бірдей болуы керек.
 - `Topic.number` пән ішінде бірегей (`UniqueConstraint(subject, number)`); `Subtopic.number` (01–20) де пән ішінде ғана бірегей — **тақырыпшаны нөмірімен іздегенде әрқашан пән бойынша сүз**.
-- Оқытушының пәндері — `Profile.subjects` (M2M); студенттің пәні — тобының пәні (`profile.group.subject`); сессияның топтары — сол пәннің топтары.
+- Оқытушының пәндері — `Profile.subjects` (M2M), `is_superuser` — барлық пән (`services.teacher_subjects`); студенттің пәні — тобының пәні (`profile.group.subject`); сессияның топтары — сол пәннің топтары.
+- Оқытушының таңдалған пәні `request.session["teacher_subject_id"]`-да (навбардағы «Пән» ауыстырғышы, тек бірнеше пәні болса). Пәні жоқ оқытушыға — «Сізге пән тағайындалмаған» беті (403).
+- Банк пен нұсқа сервистері пәнді параметр ретінде алады: `build_variant(subject, language)`, `full_contexts(subject, language)`, `bank_coverage(subject)`, `variant_summary(subject, ids)`; `create_attempt()` пәнді сессиядан алады.
 - Тест мерзімі: `deadline = min(started_at + session.subject.duration_minutes, session.closes_at)`.
 - **Жаңа пән кодты өзгертпей қосылады:** `subjects.json`-ға жазылып, `load_subjects` іске қосылады. Пәнге тән мән кодта жазылмайды (тек бұрынғы деректер үшін `constants.INFORMATICS_CODE`).
 
@@ -34,7 +36,7 @@
 - **Views тек функциялар (FBV).** Класқа негізделген views жазба (тек Django-ның дайын `LoginView` / `LogoutView` / `set_language` қолданылады).
 - **Бизнес-логика** (нұсқа құру, балл есептеу, банк толуы) — `apps/quiz/services.py`.
 - **Форма тексерулері** — `apps/quiz/forms.py` (accounts үшін `apps/accounts/forms.py`). Views ішінде логика да, тексеру де болмайды.
-- Оқытушы беттері — `apps/quiz/teacher_views.py`, `@staff_member_required`; студент беттері — `@login_required`.
+- Оқытушы беттері — `apps/quiz/teacher_views.py`, `@staff_member_required` + `@subject_required` (view `request, subject, ...` алады); **барлық сұраныс таңдалған пән бойынша сүзіледі**, басқа пәннің объектісі — 404 (`get_object_or_404(subject_questions(subject), pk=pk)`). Формаларға `subject=` беріледі. Студент беттері — `@login_required`.
 - **Айнымалы/функция атаулары ағылшынша, түсініктемелер қазақша.** PEP 8.
 - Код қарапайым болсын: жаңадан бастаған әзірлеуші оқи алатындай, артық абстракциясыз.
 
@@ -49,6 +51,7 @@
 
 - `is_correct` тест аяқталмайынша HTML-ге шықпайды.
 - Студент тек өз `Attempt`-ын және өз тобының сессияларын көреді (бөтеніне 404).
+- Оқытушы тек өз пәндерінің сұрақтарын, контексттерін, нәтижелерін көреді (басқа пәннікі — 404).
 - Сессия уақыты мен тест мерзімін тек сервер тексереді.
 - `SECRET_KEY`, `DEBUG`, `ALLOWED_HOSTS`, `DATABASE_URL` — `.env` файлынан.
 

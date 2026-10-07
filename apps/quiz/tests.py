@@ -54,6 +54,7 @@ from .models import (
 )
 from .services import (
     AttemptError,
+    attempt_deadline,
     bank_coverage,
     build_variant,
     can_see_answers,
@@ -76,6 +77,13 @@ INFORMATICS_MINUTES = 125
 def informatics():
     """Деректер миграциясы жасаған «Информатика» пәні."""
     return Subject.objects.get(code=INFORMATICS_CODE)
+
+
+def make_teacher(username="teacher", subjects=None):
+    """Оқытушы (is_staff); әдепкіде оған «Информатика» тағайындалады."""
+    teacher = User.objects.create_user(username=username, password="pass12345", is_staff=True)
+    teacher.profile.subjects.set(subjects if subjects is not None else [informatics()])
+    return teacher
 
 
 def run_command(*args):
@@ -329,9 +337,7 @@ class TeacherTestCase(TestCase):
 
     def setUp(self):
         run_command("load_topics")
-        self.teacher = User.objects.create_user(
-            username="teacher", password="pass12345", is_staff=True
-        )
+        self.teacher = make_teacher()
         self.client.force_login(self.teacher)
         self.topic = Topic.objects.get(number=2)
         self.subtopic = Subtopic.objects.get(number=3)  # 02 тақырыптікі
@@ -734,7 +740,7 @@ class BankCoverageTests(TeacherTestCase):
         for _ in range(QUESTIONS_PER_CONTEXT):
             self.create_question(context=quiz_context)  # контекстік — бөлек саналады
 
-        coverage = bank_coverage()
+        coverage = bank_coverage(informatics())
         row = next(row for row in coverage["rows"] if row["subtopic"] == self.subtopic)
         kk_cells, ru_cells = row["cells"][:4], row["cells"][4:]
         self.assertEqual([cell["count"] for cell in kk_cells], [2, 3, 1, 6])
@@ -749,7 +755,7 @@ class BankCoverageTests(TeacherTestCase):
 
     def test_demo_bank_is_full(self):
         run_command("load_demo")
-        coverage = bank_coverage()
+        coverage = bank_coverage(informatics())
         for row in coverage["rows"]:
             totals = [cell for cell in row["cells"] if cell["is_total"]]
             self.assertFalse(any(cell["missing"] for cell in totals), row["subtopic"])
@@ -951,7 +957,7 @@ class VariantTestCase(TestCase):
 
     def variant_questions(self, language, seed):
         """Нұсқаны құрып, сұрақтарды тест ретімен қайтарады."""
-        question_ids = build_variant(language, random.Random(seed))
+        question_ids = build_variant(informatics(), language, random.Random(seed))
         questions = Question.objects.select_related("subtopic").in_bulk(question_ids)
         return [questions[question_id] for question_id in question_ids]
 
@@ -1057,7 +1063,7 @@ class BuildVariantTests(VariantTestCase):
             context.save()
         with self.assertLogs("apps.quiz.services", level="WARNING"):
             with self.assertRaises(AttemptError):
-                build_variant("ru")
+                build_variant(informatics(), "ru")
 
     def test_context_with_inactive_question_is_not_used(self):
         # Бір сұрағы белсенді емес контекст толық емес (4 / 5) — тестке жарамайды
@@ -1074,7 +1080,7 @@ class BuildVariantTests(VariantTestCase):
         ).update(is_active=False)
         with self.assertLogs("apps.quiz.services", level="WARNING"):
             with self.assertRaises(AttemptError):
-                build_variant("kk")
+                build_variant(informatics(), "kk")
 
 
 class CreateAttemptTests(VariantTestCase):
@@ -1154,9 +1160,7 @@ class BankSampleTests(VariantTestCase):
     """Оқытушының «Үлгі нұсқа» беті: /teacher/bank/sample/?lang=..."""
 
     def setUp(self):
-        self.teacher = User.objects.create_user(
-            username="teacher", password="pass12345", is_staff=True
-        )
+        self.teacher = make_teacher()
         self.client.force_login(self.teacher)
         self.url = reverse("quiz:teacher_bank_sample")
 
@@ -1279,9 +1283,7 @@ class TranslationTests(StudentTestCase):
 
     def test_teacher_pages_are_in_russian(self):
         run_command("load_topics")
-        teacher = User.objects.create_user(
-            username="teacher", password="pass12345", is_staff=True
-        )
+        teacher = make_teacher()
         self.client.force_login(teacher)
         self.switch_language("ru")
         pages = {
@@ -1566,7 +1568,7 @@ class DeadlineTests(TakeTestCase):
 
     def test_teacher_sees_expired_attempt_as_finished(self):
         self.expire(self.attempt)
-        teacher = User.objects.create_user(username="teacher", password="pass12345", is_staff=True)
+        teacher = make_teacher()
         self.client.force_login(teacher)
         response = self.client.get(reverse("quiz:attempt_result", args=[self.attempt.pk]))
         self.assertContains(response, f"0 / {QUESTIONS_TOTAL}")
@@ -1722,7 +1724,7 @@ class ShowAnswersTests(TakeTestCase):
     def test_teacher_always_sees_answers(self):
         self.session.show_answers = ExamSession.ShowAnswers.AFTER_CLOSE
         self.session.save()
-        teacher = User.objects.create_user(username="teacher", password="pass12345", is_staff=True)
+        teacher = make_teacher()
         self.client.force_login(teacher)
         response = self.client.get(self.result_url)
         self.assert_answers_shown(response)
@@ -1772,7 +1774,7 @@ class AttemptAccessTests(TakeTestCase):
         self.assertIn(reverse("accounts:login"), response["Location"])
 
     def test_teacher_can_see_any_result(self):
-        teacher = User.objects.create_user(username="teacher", password="pass12345", is_staff=True)
+        teacher = make_teacher()
         self.client.force_login(teacher)
         url = reverse("quiz:attempt_result", args=[self.foreign.pk])
         # Аяқталмаған тест — тек хабарлама
@@ -1794,9 +1796,7 @@ class TeacherResultsTests(TestCase):
     """Екі топ, екі сессия және бірнеше әрекет (сұрақсыз — тек балы)."""
 
     def setUp(self):
-        self.teacher = User.objects.create_user(
-            username="teacher", password="pass12345", is_staff=True
-        )
+        self.teacher = make_teacher()
         self.client.force_login(self.teacher)
         self.group_a = StudyGroup.objects.create(name="ИНФ-21", subject=informatics())
         self.group_b = StudyGroup.objects.create(name="ИНФ-22", subject=informatics())
@@ -1895,14 +1895,16 @@ class TeacherResultsTests(TestCase):
 
         lines = content.lstrip("﻿").splitlines()
         self.assertEqual(len(lines), 4)
-        self.assertTrue(lines[0].startswith("Студент;Логин;Топ;Сессия"))
+        self.assertTrue(lines[0].startswith("Студент;Логин;Топ;Пән;Сессия"))
         row = next(line for line in lines if "Күзгі сессия" in line and "aigerim" in line)
         columns = row.split(";")
-        self.assertEqual(columns[:4], ["Айгерім Сапарова", "aigerim", "ИНФ-21", "Күзгі сессия"])
-        self.assertEqual(columns[7:], ["Аяқталды", "37", "74", "42"])
+        self.assertEqual(
+            columns[:5], ["Айгерім Сапарова", "aigerim", "ИНФ-21", "Информатика", "Күзгі сессия"]
+        )
+        self.assertEqual(columns[8:], ["Аяқталды", "37", "74", "42"])
         # Аяқталмаған тестте балл жоқ
         running = next(line for line in lines if "dana" in line).split(";")
-        self.assertEqual(running[7:], ["Жүріп жатыр", "", "", ""])
+        self.assertEqual(running[8:], ["Жүріп жатыр", "", "", ""])
 
     def test_csv_export_uses_filter(self):
         _response, content = self.export(group=self.group_b.pk)
@@ -1914,7 +1916,7 @@ class TeacherResultsTests(TestCase):
         self.client.cookies["django_language"] = "ru"
         self.assertContains(self.get(), "Скачать CSV")
         _response, content = self.export()
-        self.assertTrue(content.lstrip("﻿").startswith("Студент;Логин;Группа;Сессия"))
+        self.assertTrue(content.lstrip("﻿").startswith("Студент;Логин;Группа;Предмет;Сессия"))
 
     def test_teacher_navigation_has_results_link(self):
         response = self.client.get(reverse("quiz:teacher_questions"))
@@ -1951,9 +1953,7 @@ class FullTranslationTests(VariantTestCase):
         )
         self.student.profile.group = self.group
         self.student.profile.save()
-        self.teacher = User.objects.create_user(
-            username="teacher", password="pass12345", is_staff=True
-        )
+        self.teacher = make_teacher()
         self.session = make_session(title="Test session")
         self.attempt = create_attempt(self.student, self.session, "ru")
         self.client.cookies["django_language"] = "ru"
@@ -2520,7 +2520,7 @@ class SubjectDurationTests(TakeTestCase):
     def setUp(self):
         super().setUp()
         self.now = timezone.now()
-        # Банк әзірге информатикадан (нұсқаны пән бойынша сүзу — 10–11-кезеңдер)
+        # Көркем еңбектің банкі жоқ: мерзімді attempt_deadline() арқылы тексереміз
         self.art_labor = Subject.objects.create(
             code="art_labor_boys",
             name_kk="Көркем еңбек",
@@ -2530,8 +2530,8 @@ class SubjectDurationTests(TakeTestCase):
         self.art_session = make_session(subject=self.art_labor)
 
     def test_art_labor_deadline_is_80_minutes(self):
-        attempt = create_attempt(self.student, self.art_session, "kk", now=self.now)
-        self.assertEqual(attempt.deadline, self.now + timedelta(minutes=80))
+        deadline = attempt_deadline(self.art_session, self.now)
+        self.assertEqual(deadline, self.now + timedelta(minutes=80))
 
     def test_informatics_deadline_is_125_minutes(self):
         attempt = create_attempt(self.student, self.session, "kk", now=self.now)
@@ -2539,9 +2539,7 @@ class SubjectDurationTests(TakeTestCase):
 
     def test_deadline_does_not_exceed_session_close(self):
         self.art_session.closes_at = self.now + timedelta(minutes=50)
-        self.art_session.save()
-        attempt = create_attempt(self.student, self.art_session, "kk", now=self.now)
-        self.assertEqual(attempt.deadline, self.art_session.closes_at)
+        self.assertEqual(attempt_deadline(self.art_session, self.now), self.art_session.closes_at)
 
     def test_start_page_shows_subject_duration(self):
         response = self.client.get(reverse("quiz:session_start", args=[self.art_session.pk]))
@@ -2621,3 +2619,356 @@ class InformaticsMigrationTests(TransactionTestCase):
         profiles = new.get_model("accounts", "Profile").objects
         self.assertEqual(list(profiles.get(user__username="teacher").subjects.all()), [subject])
         self.assertFalse(profiles.get(user__username="student").subjects.exists())
+
+
+# ---------- 10-кезең: оқытушы жағы (пән бойынша) ----------
+
+
+class SubjectTeacherTestCase(TestCase):
+    """
+    4 пән жүктелген. Информатика мен математиканың әрқайсында бір сұрақ,
+    бір контекст, бір топ, бір сессия және бір аяқталған әрекет бар.
+    """
+
+    def setUp(self):
+        run_command("load_subjects")
+        self.informatics = informatics()
+        self.mathematics = Subject.objects.get(code="mathematics")
+        self.inf = self.subject_data(self.informatics, "ИНФ-21")
+        self.math = self.subject_data(self.mathematics, "МАТ-21")
+
+    def subject_data(self, subject, group_name):
+        """Пәннің сұрағы, контексті, тобы, сессиясы және әрекеті."""
+        subtopic = Subtopic.objects.get(topic__subject=subject, number=1)
+        question = Question.objects.create(
+            subtopic=subtopic, language="kk", text=f"{subject.code} сұрағы", level="A"
+        )
+        for index in range(ANSWERS_PER_QUESTION):
+            Answer.objects.create(question=question, text=f"Жауап {index}", is_correct=index == 0)
+        context = Context.objects.create(
+            subject=subject, language="kk", title=f"{subject.code} контексті", text="Мәтін"
+        )
+        group = StudyGroup.objects.create(name=group_name, subject=subject)
+        session = make_session(title=f"{subject.code} сессиясы", subject=subject)
+        student = User.objects.create_user(username=f"{subject.code}-student", password="pass12345")
+        student.profile.group = group
+        student.profile.save()
+        now = timezone.now()
+        attempt = Attempt.objects.create(
+            user=student,
+            session=session,
+            language="kk",
+            started_at=now - timedelta(minutes=30),
+            deadline=now + timedelta(minutes=30),
+            finished_at=now - timedelta(minutes=5),
+            status=Attempt.Status.FINISHED,
+            score=10,
+        )
+        return {
+            "subtopic": subtopic,
+            "question": question,
+            "context": context,
+            "group": group,
+            "session": session,
+            "attempt": attempt,
+        }
+
+    def login_teacher(self, *subjects):
+        teacher = make_teacher(username="t-" + "-".join(s.code for s in subjects), subjects=subjects)
+        self.client.force_login(teacher)
+        return teacher
+
+    def select_subject(self, subject, next_url="/teacher/questions/"):
+        return self.client.post(
+            reverse("quiz:teacher_subject_select"), {"subject": subject.pk, "next": next_url}
+        )
+
+
+class TeacherSubjectAccessTests(SubjectTeacherTestCase):
+    """Математика оқытушысы информатиканың деректерін көрмейді (TZ.md, 10.9)."""
+
+    def setUp(self):
+        super().setUp()
+        self.login_teacher(self.mathematics)
+
+    def test_question_list_shows_only_own_subject(self):
+        response = self.client.get(reverse("quiz:teacher_questions"))
+        self.assertContains(response, "mathematics сұрағы")
+        self.assertNotContains(response, "informatics сұрағы")
+
+    def test_other_subject_pages_are_404(self):
+        question = self.inf["question"].pk
+        pages = [
+            ("get", reverse("quiz:teacher_question_edit", args=[question])),
+            ("post", reverse("quiz:teacher_question_copy", args=[question])),
+            ("post", reverse("quiz:teacher_question_toggle", args=[question])),
+            ("get", reverse("quiz:teacher_context_edit", args=[self.inf["context"].pk])),
+            ("get", reverse("quiz:attempt_result", args=[self.inf["attempt"].pk])),
+        ]
+        for method, url in pages:
+            with self.subTest(url=url):
+                response = getattr(self.client, method)(url)
+                self.assertEqual(response.status_code, 404)
+        # Ештеңе өзгермеді
+        self.assertEqual(Question.objects.count(), 2)
+        self.assertTrue(Question.objects.get(pk=question).is_active)
+
+    def test_own_subject_pages_open(self):
+        pages = [
+            reverse("quiz:teacher_question_edit", args=[self.math["question"].pk]),
+            reverse("quiz:teacher_context_edit", args=[self.math["context"].pk]),
+            reverse("quiz:attempt_result", args=[self.math["attempt"].pk]),
+        ]
+        for url in pages:
+            with self.subTest(url=url):
+                self.assertEqual(self.client.get(url).status_code, 200)
+
+    def test_context_list_shows_only_own_subject(self):
+        response = self.client.get(reverse("quiz:teacher_contexts"))
+        self.assertContains(response, "mathematics контексті")
+        self.assertNotContains(response, "informatics контексті")
+
+    def test_results_and_csv_show_only_own_subject(self):
+        response = self.client.get(reverse("quiz:teacher_results"))
+        self.assertEqual([row["attempt"] for row in response.context["rows"]], [self.math["attempt"]])
+        form = response.context["filter_form"]
+        self.assertEqual(list(form.fields["session"].queryset), [self.math["session"]])
+        self.assertEqual(list(form.fields["group"].queryset), [self.math["group"]])
+
+        content = self.client.get(reverse("quiz:teacher_results_export")).content.decode()
+        self.assertIn("mathematics-student", content)
+        self.assertIn("Математика", content)
+        self.assertNotIn("informatics-student", content)
+
+    def test_results_filter_ignores_other_subject_session(self):
+        response = self.client.get(
+            reverse("quiz:teacher_results"), {"session": self.inf["session"].pk}
+        )
+        # Бөтен сессия сүзгіде жоқ — сүзгі қолданылмайды, бірақ бөтен нәтиже шықпайды
+        self.assertEqual([row["attempt"] for row in response.context["rows"]], [self.math["attempt"]])
+
+    def test_bank_shows_subject_subtopics(self):
+        response = self.client.get(reverse("quiz:teacher_bank"))
+        rows = response.context["coverage"]["rows"]
+        self.assertEqual(len(rows), SUBTOPICS_COUNT)
+        self.assertTrue(all(row["subtopic"].topic.subject_id == self.mathematics.pk for row in rows))
+
+    def test_bank_sample_without_bank_shows_error(self):
+        response = self.client.get(reverse("quiz:teacher_bank_sample"))
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("error", response.context)
+
+    def test_new_context_belongs_to_selected_subject(self):
+        self.client.post(
+            reverse("quiz:teacher_context_create"),
+            {"title": "Жаңа", "language": "kk", "text": "Мәтін", "is_active": "on"},
+        )
+        self.assertEqual(Context.objects.get(title="Жаңа").subject, self.mathematics)
+
+
+class TeacherQuestionFormSubjectTests(SubjectTeacherTestCase):
+    def setUp(self):
+        super().setUp()
+        self.login_teacher(self.mathematics)
+        Context.objects.create(subject=self.mathematics, language="ru", title="Орысша", text="Т")
+
+    def test_form_lists_only_subject_topics_and_contexts(self):
+        response = self.client.get(reverse("quiz:teacher_question_create"))
+        form = response.context["form"]
+        self.assertEqual(form.fields["topic"].queryset.count(), 20)
+        self.assertFalse(
+            form.fields["topic"].queryset.exclude(subject=self.mathematics).exists()
+        )
+        self.assertEqual(form.fields["subtopic"].queryset.count(), SUBTOPICS_COUNT)
+        contexts = set(form.fields["context"].queryset)
+        self.assertIn(self.math["context"], contexts)
+        self.assertNotIn(self.inf["context"], contexts)
+        # Контекст тізімінде тілі жазылады (JS сол тілдікін ғана қалдырады)
+        self.assertContains(response, 'data-language="ru"')
+        self.assertContains(response, "js/context_filter.js")
+
+    def test_subtopic_description_is_hint(self):
+        response = self.client.get(reverse("quiz:teacher_question_create"))
+        description = self.math["subtopic"].description_kk
+        self.assertNotEqual(description, "")
+        self.assertContains(response, f'title="{escape(description)}"')
+
+    def test_other_subject_subtopic_is_rejected(self):
+        response = self.client.post(
+            reverse("quiz:teacher_question_create"),
+            {
+                "topic": self.inf["subtopic"].topic_id,
+                "subtopic": self.inf["subtopic"].pk,
+                "level": "A",
+                "language": "kk",
+                "context": "",
+                "text": "Бөтен пәнге сұрақ",
+                "answers-TOTAL_FORMS": "4",
+                "answers-INITIAL_FORMS": "0",
+                "answers-MIN_NUM_FORMS": "4",
+                "answers-MAX_NUM_FORMS": "4",
+                "answers-0-text": "1",
+                "answers-1-text": "2",
+                "answers-2-text": "3",
+                "answers-3-text": "4",
+                "answers-correct": "0",
+                "save": "",
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("subtopic", response.context["form"].errors)
+        self.assertFalse(Question.objects.filter(text="Бөтен пәнге сұрақ").exists())
+
+    def test_question_list_filter_lists_only_subject_topics(self):
+        response = self.client.get(reverse("quiz:teacher_questions"))
+        form = response.context["filter_form"]
+        self.assertEqual(form.fields["topic"].queryset.count(), 20)
+        self.assertEqual(form.fields["subtopic"].queryset.count(), SUBTOPICS_COUNT)
+
+
+class TeacherSubjectSwitchTests(SubjectTeacherTestCase):
+    def test_teacher_without_subject_sees_message(self):
+        self.login_teacher()
+        urls = [
+            reverse("quiz:teacher_questions"),
+            reverse("quiz:teacher_question_create"),
+            reverse("quiz:teacher_contexts"),
+            reverse("quiz:teacher_bank"),
+            reverse("quiz:teacher_bank_sample"),
+            reverse("quiz:teacher_results"),
+            reverse("quiz:teacher_results_export"),
+        ]
+        for url in urls:
+            with self.subTest(url=url):
+                response = self.client.get(url)
+                self.assertContains(
+                    response, "Сізге пән тағайындалмаған, әкімшіге хабарласыңыз.", status_code=403
+                )
+        # Нәтиже беті де ашылмайды
+        url = reverse("quiz:attempt_result", args=[self.inf["attempt"].pk])
+        self.assertEqual(self.client.get(url).status_code, 404)
+
+    def test_no_subject_message_in_russian(self):
+        self.login_teacher()
+        self.client.cookies["django_language"] = "ru"
+        response = self.client.get(reverse("quiz:teacher_questions"))
+        self.assertContains(
+            response, "Вам не назначен предмет, обратитесь к администратору.", status_code=403
+        )
+
+    def test_one_subject_shows_name_without_switcher(self):
+        self.login_teacher(self.mathematics)
+        response = self.client.get(reverse("quiz:teacher_questions"))
+        self.assertContains(response, "Математика")
+        self.assertNotContains(response, reverse("quiz:teacher_subject_select"))
+
+    def test_default_is_first_subject(self):
+        self.login_teacher(self.mathematics, self.informatics)
+        response = self.client.get(reverse("quiz:teacher_questions"))
+        # Реті бойынша бірінші — информатика
+        self.assertContains(response, "informatics сұрағы")
+        self.assertContains(response, reverse("quiz:teacher_subject_select"))
+        self.assertContains(response, "Математика")
+
+    def test_switch_subject(self):
+        self.login_teacher(self.mathematics, self.informatics)
+        response = self.select_subject(self.mathematics, "/teacher/questions/?topic=3&page=2")
+        # Сүзгі параметрлері алынып тасталады (олар бұрынғы пәнге жатады)
+        self.assertRedirects(response, reverse("quiz:teacher_questions"))
+        response = self.client.get(reverse("quiz:teacher_questions"))
+        self.assertContains(response, "mathematics сұрағы")
+        self.assertNotContains(response, "informatics сұрағы")
+        # Таңдау келесі беттерде де сақталады
+        response = self.client.get(reverse("quiz:teacher_results"))
+        self.assertEqual([row["attempt"] for row in response.context["rows"]], [self.math["attempt"]])
+
+    def test_switch_from_edit_page_returns_to_list(self):
+        self.login_teacher(self.mathematics, self.informatics)
+        edit_url = reverse("quiz:teacher_question_edit", args=[self.inf["question"].pk])
+        response = self.select_subject(self.mathematics, edit_url)
+        self.assertRedirects(response, reverse("quiz:teacher_questions"))
+        edit_url = reverse("quiz:teacher_context_edit", args=[self.inf["context"].pk])
+        response = self.select_subject(self.mathematics, edit_url)
+        self.assertRedirects(response, reverse("quiz:teacher_contexts"))
+
+    def test_switch_keeps_section(self):
+        self.login_teacher(self.mathematics, self.informatics)
+        response = self.select_subject(self.mathematics, reverse("quiz:teacher_bank"))
+        self.assertRedirects(response, reverse("quiz:teacher_bank"))
+
+    def test_external_next_is_ignored(self):
+        self.login_teacher(self.mathematics, self.informatics)
+        response = self.select_subject(self.mathematics, "https://evil.example/")
+        self.assertRedirects(response, reverse("quiz:teacher_questions"))
+
+    def test_cannot_select_unassigned_subject(self):
+        self.login_teacher(self.mathematics)
+        self.select_subject(self.informatics)
+        response = self.client.get(reverse("quiz:teacher_questions"))
+        self.assertContains(response, "mathematics сұрағы")
+        self.assertNotContains(response, "informatics сұрағы")
+
+    def test_select_requires_post_and_staff(self):
+        self.login_teacher(self.mathematics)
+        self.assertEqual(self.client.get(reverse("quiz:teacher_subject_select")).status_code, 405)
+        student = User.objects.create_user(username="student", password="pass12345")
+        self.client.force_login(student)
+        response = self.select_subject(self.mathematics)
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(reverse("admin:login"), response["Location"])
+
+    def test_superuser_sees_all_subjects(self):
+        admin = User.objects.create_superuser(username="admin", password="pass12345")
+        self.client.force_login(admin)
+        response = self.client.get(reverse("quiz:teacher_questions"))
+        self.assertEqual(len(response.wsgi_request.teacher_subjects), 4)
+        self.select_subject(self.mathematics)
+        response = self.client.get(reverse("quiz:attempt_result", args=[self.inf["attempt"].pk]))
+        self.assertEqual(response.status_code, 200)
+
+    def test_inactive_subject_is_hidden(self):
+        self.mathematics.is_active = False
+        self.mathematics.save()
+        self.login_teacher(self.mathematics)
+        response = self.client.get(reverse("quiz:teacher_questions"))
+        self.assertEqual(response.status_code, 403)
+
+
+class SubjectVariantTests(VariantTestCase):
+    """Басқа пәндер жүктелсе де, информатика нұсқасы тек информатикадан құрылады."""
+
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        run_command("load_subjects")
+        # Математикаға бөтен сұрақ пен толық контекст қосамыз — нұсқаға түспеуі керек
+        mathematics = Subject.objects.get(code="mathematics")
+        context = Context.objects.create(subject=mathematics, language="kk", title="М", text="М")
+        subtopic = Subtopic.objects.get(topic__subject=mathematics, number=1)
+        for level in ["A", "B", "B", "B", "C"]:
+            Question.objects.create(
+                subtopic=subtopic, context=context, language="kk", text="М", level=level
+            )
+        Question.objects.create(subtopic=subtopic, language="kk", text="М", level="A")
+
+    def test_variant_uses_only_subject_questions(self):
+        for seed in range(5):
+            with self.subTest(seed=seed):
+                questions = self.variant_questions("kk", seed)
+                self.assertEqual(len(questions), QUESTIONS_TOTAL)
+                subjects = {question.subtopic.topic.subject_id for question in questions}
+                self.assertEqual(subjects, {informatics().pk})
+
+    def test_subject_without_bank_cannot_build_variant(self):
+        mathematics = Subject.objects.get(code="mathematics")
+        with self.assertLogs("apps.quiz.services", level="WARNING"):
+            with self.assertRaises(AttemptError):
+                build_variant(mathematics, "kk")
+
+    def test_bank_coverage_is_per_subject(self):
+        coverage = bank_coverage(Subject.objects.get(code="mathematics"))
+        self.assertEqual(len(coverage["rows"]), SUBTOPICS_COUNT)
+        # Математиканың 01-тақырыпшасында бір жеке сұрақ (A, kk)
+        self.assertEqual(coverage["rows"][0]["cells"][0]["count"], 1)
+        # Толық контекст: kk — 1, ru — 0
+        self.assertEqual([item["count"] for item in coverage["contexts"]], [1, 0])

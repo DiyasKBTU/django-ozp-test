@@ -68,6 +68,11 @@
             </ul>
 
             <div class="d-flex flex-wrap align-items-center gap-2 py-2 py-lg-0">
+                {# Оқытушы беттерінде: таңдалған пән (бірнеше пәні болса — ауыстырғыш) #}
+                {% if request.subject %}
+                    {% include "teacher/_subject_switcher.html" %}
+                {% endif %}
+
                 {# Тіл ауыстырғыш: таңдау cookie-де сақталады #}
                 <form action="{% url 'set_language' %}" method="post" class="d-flex gap-1">
                     {% csrf_token %}

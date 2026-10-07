@@ -16,6 +16,7 @@ from .models import (
     Language,
     Level,
     Question,
+    Subject,
     Subtopic,
     Topic,
 )
@@ -96,6 +97,7 @@ class SubtopicSelect(forms.Select):
     """
     Тақырыпшалар тізімі: әр <option>-ға оның тақырыбы жазылады (data-topic).
     static/js/subtopic_filter.js сол бойынша тек таңдалған тақырыптың тақырыпшаларын қалдырады.
+    Спецификациядағы толық мазмұны (description_kk) подсказка (title) болып шығады.
     """
 
     def create_option(self, name, value, label, selected, index, subindex=None, attrs=None):
@@ -103,6 +105,21 @@ class SubtopicSelect(forms.Select):
         # Бос жолдан ("---------") басқасының мәнінде тақырыпша объектісі бар
         if value:
             option["attrs"]["data-topic"] = value.instance.topic_id
+            if value.instance.description_kk:
+                option["attrs"]["title"] = value.instance.description_kk
+        return option
+
+
+class ContextSelect(forms.Select):
+    """
+    Контексттер тізімі: әр <option>-ға оның тілі жазылады (data-language).
+    static/js/subtopic_filter.js сол бойынша тек сұрақ тіліндегі контексттерді қалдырады.
+    """
+
+    def create_option(self, name, value, label, selected, index, subindex=None, attrs=None):
+        option = super().create_option(name, value, label, selected, index, subindex, attrs)
+        if value:
+            option["attrs"]["data-language"] = value.instance.language
         return option
 
 
@@ -128,16 +145,17 @@ def initial_from_query(query):
 
 class QuestionForm(forms.ModelForm):
     """
-    Оқытушының сұрақ енгізу формасы.
+    Оқытушының сұрақ енгізу формасы (subject — оқытушының таңдалған пәні:
+    тақырыптар, тақырыпшалар мен контексттер тек сол пәннен).
     Өрістер реті: тақырып → тақырыпша → деңгей → тіл → контекст → мәтін, код, сурет.
     Жауап нұсқалары бөлек — AnswerFormSet.
     """
 
     # Тақырып сұраққа сақталмайды: ол тек тақырыпшаларды сүзу үшін керек
-    topic = forms.ModelChoiceField(label=_("Тақырып"), queryset=Topic.objects.all())
+    topic = forms.ModelChoiceField(label=_("Тақырып"), queryset=Topic.objects.none())
     subtopic = forms.ModelChoiceField(
         label=_("Тақырыпша"),
-        queryset=Subtopic.objects.all(),
+        queryset=Subtopic.objects.none(),
         widget=SubtopicSelect,
     )
     level = forms.ChoiceField(
@@ -153,6 +171,7 @@ class QuestionForm(forms.ModelForm):
         queryset=Context.objects.none(),
         required=False,
         empty_label=_("Жоқ (жеке сұрақ)"),
+        widget=ContextSelect,
     )
     text = forms.CharField(label=_("Сұрақ мәтіні"), widget=forms.Textarea(attrs={"rows": 4}))
     code = CodeField(label=_("Код"), required=False)
@@ -164,10 +183,15 @@ class QuestionForm(forms.ModelForm):
         fields = ["subtopic", "level", "language", "context", "text", "code", "image"]
         labels = {"image": _("Сурет")}
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, subject, **kwargs):
         super().__init__(*args, **kwargs)
-        # Тізімде белсенді контексттер (өңделіп жатқан сұрақтың контексті — белсенді болмаса да)
-        self.fields["context"].queryset = Context.objects.filter(
+        self.fields["topic"].queryset = Topic.objects.filter(subject=subject)
+        self.fields["subtopic"].queryset = Subtopic.objects.filter(
+            topic__subject=subject
+        ).select_related("topic")
+        # Тізімде пәннің белсенді контексттері (өңделіп жатқан сұрақтың контексті —
+        # белсенді болмаса да)
+        self.fields["context"].queryset = Context.objects.filter(subject=subject).filter(
             Q(is_active=True) | Q(pk=self.instance.context_id)
         )
         if self.instance.pk:
@@ -319,6 +343,19 @@ class ContextForm(forms.ModelForm):
         return language
 
 
+# ---------- Оқытушының пәні ----------
+
+
+class SubjectSelectForm(forms.Form):
+    """Пән ауыстырғышы: оқытушы тек өзіне тағайындалған пәнді таңдай алады."""
+
+    subject = forms.ModelChoiceField(queryset=Subject.objects.none())
+
+    def __init__(self, *args, subjects, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["subject"].queryset = subjects
+
+
 # ---------- Сессия (admin) ----------
 
 
@@ -392,23 +429,25 @@ class PracticeStartForm(forms.Form):
 
 
 class ResultFilterForm(forms.Form):
-    """Нәтижелер сүзгісі (GET): сессия және топ."""
+    """Нәтижелер сүзгісі (GET): сессия және топ — тек оқытушының таңдалған пәнінен."""
 
     session = forms.ModelChoiceField(
         label=_("Сессия"),
-        queryset=ExamSession.objects.all(),
+        queryset=ExamSession.objects.none(),
         required=False,
         empty_label=_("Барлық сессия"),
     )
     group = forms.ModelChoiceField(
         label=_("Топ"),
-        queryset=StudyGroup.objects.all(),
+        queryset=StudyGroup.objects.none(),
         required=False,
         empty_label=_("Барлық топ"),
     )
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, subject, **kwargs):
         super().__init__(*args, **kwargs)
+        self.fields["session"].queryset = ExamSession.objects.filter(subject=subject)
+        self.fields["group"].queryset = StudyGroup.objects.filter(subject=subject)
         add_bootstrap_classes(self)
 
     def filter(self, attempts):
@@ -438,17 +477,20 @@ class SampleVariantForm(forms.Form):
 
 
 class QuestionFilterForm(forms.Form):
-    """Сұрақтар тізімінің сүзгісі (GET): тақырып, тақырыпша, деңгей, тіл, мәтіннен іздеу."""
+    """
+    Сұрақтар тізімінің сүзгісі (GET): тақырып, тақырыпша, деңгей, тіл, мәтіннен іздеу.
+    Тақырыптар мен тақырыпшалар — тек оқытушының таңдалған пәнінен.
+    """
 
     topic = forms.ModelChoiceField(
         label=_("Тақырып"),
-        queryset=Topic.objects.all(),
+        queryset=Topic.objects.none(),
         required=False,
         empty_label=_("Барлық тақырып"),
     )
     subtopic = forms.ModelChoiceField(
         label=_("Тақырыпша"),
-        queryset=Subtopic.objects.all(),
+        queryset=Subtopic.objects.none(),
         required=False,
         empty_label=_("Барлық тақырыпша"),
         widget=SubtopicSelect,
@@ -465,8 +507,12 @@ class QuestionFilterForm(forms.Form):
     )
     q = forms.CharField(label=_("Іздеу"), required=False)
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, subject, **kwargs):
         super().__init__(*args, **kwargs)
+        self.fields["topic"].queryset = Topic.objects.filter(subject=subject)
+        self.fields["subtopic"].queryset = Subtopic.objects.filter(
+            topic__subject=subject
+        ).select_related("topic")
         add_bootstrap_classes(self)
         self.fields["q"].widget.attrs["placeholder"] = _("Мәтін немесе код")
 

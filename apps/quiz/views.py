@@ -28,6 +28,7 @@ from .services import (
     remaining_seconds,
     save_answer,
     start_practice,
+    teacher_subjects,
     unanswered_numbers,
     visible_sessions,
 )
@@ -164,10 +165,13 @@ def attempt_finish(request, attempt_id):
 def attempt_result_page(request, attempt_id):
     """
     Нәтиже беті: балл, деңгей және тақырып бойынша талдау, дұрыс жауаптар.
-    Студент тек өз нәтижесін көреді (бөтені — 404), оқытушы — барлығын.
+    Студент тек өз нәтижесін көреді (бөтені — 404), оқытушы — өз пәндерінің
+    нәтижелерін (басқа пәннікі — 404).
     """
     attempts = Attempt.objects.select_related("session", "user")
-    if not request.user.is_staff:
+    if request.user.is_staff:
+        attempts = attempts.filter(session__subject__in=teacher_subjects(request.user))
+    else:
         attempts = attempts.filter(user=request.user)
     attempt = finish_if_expired(get_object_or_404(attempts, pk=attempt_id))
 

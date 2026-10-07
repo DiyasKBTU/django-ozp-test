@@ -1,0 +1,19 @@
+{% load i18n %}
+{# Оқытушының пәні: таңдау Django сессиясында сақталады (teacher_views.subject_select) #}
+{% if request.teacher_subjects|length > 1 %}
+    <div class="dropdown">
+        <button class="btn btn-sm btn-light dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+            {% translate "Пән" %}: {{ request.subject.name }}
+        </button>
+        <form action="{% url 'quiz:teacher_subject_select' %}" method="post" class="dropdown-menu">
+            {% csrf_token %}
+            <input type="hidden" name="next" value="{{ request.get_full_path }}">
+            {% for subject in request.teacher_subjects %}
+                <button type="submit" name="subject" value="{{ subject.pk }}"
+                        class="dropdown-item{% if subject.pk == request.subject.pk %} active{% endif %}">{{ subject.name }}</button>
+            {% endfor %}
+        </form>
+    </div>
+{% else %}
+    <span class="navbar-text small">{% translate "Пән" %}: <span class="fw-semibold">{{ request.subject.name }}</span></span>
+{% endif %}

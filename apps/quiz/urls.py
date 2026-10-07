@@ -25,6 +25,7 @@ urlpatterns = [
     path("practice/q/<int:number>/", views.practice_question, name="practice_question"),
     path("practice/result/", views.practice_result, name="practice_result"),
     # ---------- Оқытушы беттері ----------
+    path("teacher/subject/", teacher_views.subject_select, name="teacher_subject_select"),
     path("teacher/questions/", teacher_views.question_list, name="teacher_questions"),
     path(
         "teacher/questions/new/",

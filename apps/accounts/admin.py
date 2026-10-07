@@ -28,7 +28,7 @@ admin.site.unregister(User)
 class CustomUserAdmin(UserAdmin):
     inlines = [ProfileInline]
     list_display = ["username", "first_name", "last_name", "group_name", "is_staff"]
-    list_filter = ["is_staff", "is_superuser", "profile__group"]
+    list_filter = ["is_staff", "is_superuser", "profile__subjects", "profile__group"]
 
     @admin.display(description=_("топ"))
     def group_name(self, obj):

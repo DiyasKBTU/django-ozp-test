@@ -123,6 +123,7 @@ class LoginLogoutTests(TestCase):
         self.teacher = User.objects.create_user(
             username="teacher", password="pass12345", is_staff=True
         )
+        self.teacher.profile.subjects.add(informatics())
 
     def login(self, username, next_url=None):
         url = reverse("accounts:login")

@@ -1,7 +1,11 @@
 """
 Оқытушы беттері (/teacher/...): сұрақтар, контексттер, банк толуы, нәтижелер.
-Барлығы тек оқытушыға (is_staff) ашық.
+Барлығы тек оқытушыға (is_staff) ашық және тек оқытушының таңдалған пәні
+бойынша жұмыс істейді (TZ.md, 10.4): басқа пәннің сұрағы, контексті — 404.
 """
+
+from functools import wraps
+from urllib.parse import urlsplit
 
 from django.contrib import messages
 from django.contrib.admin.views.decorators import staff_member_required
@@ -9,7 +13,7 @@ from django.core.paginator import Paginator
 from django.db.models import Count, Q
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
-from django.urls import reverse
+from django.urls import Resolver404, resolve, reverse
 from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils.translation import gettext as _
@@ -24,6 +28,7 @@ from .forms import (
     QuestionForm,
     ResultFilterForm,
     SampleVariantForm,
+    SubjectSelectForm,
     initial_from_query,
 )
 from .models import Attempt, Context, Language, Question
@@ -31,12 +36,13 @@ from .services import (
     AttemptError,
     bank_coverage,
     build_variant,
+    choose_subject,
     copy_question,
-    default_subject,
     finish_expired_attempts,
     results_rows,
     results_summary,
     save_question,
+    teacher_subjects,
     toggle_question_active,
     variant_summary,
     write_results_csv,
@@ -44,6 +50,35 @@ from .services import (
 
 # Сұрақтар тізімінің бір бетіндегі жол саны
 QUESTIONS_PER_PAGE = 50
+
+# Оқытушының таңдалған пәні Django сессиясында осы кілтпен сақталады
+SUBJECT_SESSION_KEY = "teacher_subject_id"
+
+# Пән ауыстырылғанда өңдеу бетінен (онда бұрынғы пәннің сұрағы) тізімге қайтамыз
+LIST_PAGES = {
+    "teacher_question_edit": "quiz:teacher_questions",
+    "teacher_context_edit": "quiz:teacher_contexts",
+}
+
+
+def subject_required(view):
+    """
+    Оқытушы беті таңдалған пәнмен шақырылады: view(request, subject, ...).
+    Пәндер тізімі мен таңдалған пән шаблонға (пән ауыстырғышы) request арқылы
+    беріледі. Пәні тағайындалмаған оқытушыға хабарлама беті шығады.
+    """
+
+    @wraps(view)
+    def wrapper(request, *args, **kwargs):
+        subjects = list(teacher_subjects(request.user))
+        subject = choose_subject(subjects, request.session.get(SUBJECT_SESSION_KEY))
+        if subject is None:
+            return render(request, "teacher/no_subject.html", status=403)
+        request.teacher_subjects = subjects
+        request.subject = subject
+        return view(request, subject, *args, **kwargs)
+
+    return wrapper
 
 
 def redirect_back(request, default):
@@ -54,14 +89,45 @@ def redirect_back(request, default):
     return redirect(default)
 
 
-# ---------- Сұрақтар ----------
+# ---------- Пән ауыстырғышы ----------
 
 
 @staff_member_required
-def question_list(request):
-    filter_form = QuestionFilterForm(request.GET)
+@require_POST
+def subject_select(request):
+    """Оқытушының пәнін ауыстырады да, сол бөлімнің бетіне қайтарады (сүзгісіз)."""
+    form = SubjectSelectForm(request.POST, subjects=teacher_subjects(request.user))
+    if form.is_valid():
+        request.session[SUBJECT_SESSION_KEY] = form.cleaned_data["subject"].pk
+
+    next_url = request.POST.get("next", "")
+    if not url_has_allowed_host_and_scheme(next_url, allowed_hosts={request.get_host()}):
+        return redirect("quiz:teacher_questions")
+    # Сүзгі параметрлері (тақырып, сессия) бұрынғы пәнге жатады — алып тастаймыз
+    path = urlsplit(next_url).path
+    try:
+        url_name = resolve(path).url_name
+    except Resolver404:
+        return redirect("quiz:teacher_questions")
+    if url_name in LIST_PAGES:
+        return redirect(LIST_PAGES[url_name])
+    return redirect(path)
+
+
+# ---------- Сұрақтар ----------
+
+
+def subject_questions(subject):
+    """Пәннің сұрақтары (оқытушы тек осыларды ашып, өзгерте алады)."""
+    return Question.objects.filter(subtopic__topic__subject=subject)
+
+
+@staff_member_required
+@subject_required
+def question_list(request, subject):
+    filter_form = QuestionFilterForm(request.GET, subject=subject)
     questions = filter_form.filter(
-        Question.objects.select_related("subtopic__topic", "context")
+        subject_questions(subject).select_related("subtopic__topic", "context")
     )
     page = Paginator(questions, QUESTIONS_PER_PAGE).get_page(request.GET.get("page"))
 
@@ -76,10 +142,10 @@ def question_list(request):
     )
 
 
-def question_form_page(request, question=None):
+def question_form_page(request, subject, question=None):
     """Сұрақ енгізу (question=None) және өңдеу беттерінің ортақ бөлігі."""
     if request.method == "POST":
-        form = QuestionForm(request.POST, request.FILES, instance=question)
+        form = QuestionForm(request.POST, request.FILES, instance=question, subject=subject)
         formset = AnswerFormSet(request.POST, instance=form.instance)
         if form.is_valid() and formset.is_valid():
             question = save_question(form, formset)
@@ -91,7 +157,7 @@ def question_form_page(request, question=None):
             return redirect("quiz:teacher_question_edit", pk=question.pk)
     else:
         initial = initial_from_query(request.GET) if question is None else None
-        form = QuestionForm(instance=question, initial=initial)
+        form = QuestionForm(instance=question, initial=initial, subject=subject)
         formset = AnswerFormSet(instance=form.instance)
 
     # Алдын ала қарау — сақталған нұсқасы (форма өзгерткен объект емес)
@@ -107,29 +173,33 @@ def question_form_page(request, question=None):
 
 
 @staff_member_required
-def question_create(request):
-    return question_form_page(request)
+@subject_required
+def question_create(request, subject):
+    return question_form_page(request, subject)
 
 
 @staff_member_required
-def question_edit(request, pk):
-    question = get_object_or_404(Question, pk=pk)
-    return question_form_page(request, question)
+@subject_required
+def question_edit(request, subject, pk):
+    question = get_object_or_404(subject_questions(subject), pk=pk)
+    return question_form_page(request, subject, question)
 
 
 @staff_member_required
+@subject_required
 @require_POST
-def question_copy(request, pk):
-    question = get_object_or_404(Question, pk=pk)
+def question_copy(request, subject, pk):
+    question = get_object_or_404(subject_questions(subject), pk=pk)
     copy = copy_question(question)
     messages.success(request, _("Көшірмесі жасалды, қажет болса өңдеңіз."))
     return redirect("quiz:teacher_question_edit", pk=copy.pk)
 
 
 @staff_member_required
+@subject_required
 @require_POST
-def question_toggle(request, pk):
-    question = get_object_or_404(Question, pk=pk)
+def question_toggle(request, subject, pk):
+    question = get_object_or_404(subject_questions(subject), pk=pk)
     if not toggle_question_active(question):
         messages.error(
             request,
@@ -143,8 +213,9 @@ def question_toggle(request, pk):
 
 
 @staff_member_required
-def context_list(request):
-    contexts = Context.objects.annotate(
+@subject_required
+def context_list(request, subject):
+    contexts = Context.objects.filter(subject=subject).annotate(
         active_count=Count("questions", filter=Q(questions__is_active=True))
     )
     return render(
@@ -154,10 +225,10 @@ def context_list(request):
     )
 
 
-def context_form_page(request, quiz_context=None):
+def context_form_page(request, subject, quiz_context=None):
     """Контекст жасау (quiz_context=None) және өңдеу беттерінің ортақ бөлігі."""
-    # Жаңа контекстің пәні (пән ауыстырғышы 10-кезеңде қосылады)
-    instance = quiz_context or Context(subject=default_subject())
+    # Жаңа контекст оқытушының таңдалған пәніне жазылады
+    instance = quiz_context or Context(subject=subject)
     if request.method == "POST":
         form = ContextForm(request.POST, request.FILES, instance=instance)
         if form.is_valid():
@@ -187,27 +258,31 @@ def context_form_page(request, quiz_context=None):
 
 
 @staff_member_required
-def context_create(request):
-    return context_form_page(request)
+@subject_required
+def context_create(request, subject):
+    return context_form_page(request, subject)
 
 
 @staff_member_required
-def context_edit(request, pk):
-    quiz_context = get_object_or_404(Context, pk=pk)
-    return context_form_page(request, quiz_context)
+@subject_required
+def context_edit(request, subject, pk):
+    quiz_context = get_object_or_404(Context, pk=pk, subject=subject)
+    return context_form_page(request, subject, quiz_context)
 
 
 # ---------- Банк толуы ----------
 
 
 @staff_member_required
-def bank(request):
-    return render(request, "teacher/bank.html", {"coverage": bank_coverage()})
+@subject_required
+def bank(request, subject):
+    return render(request, "teacher/bank.html", {"coverage": bank_coverage(subject)})
 
 
 @staff_member_required
+@subject_required
 @never_cache
-def bank_sample(request):
+def bank_sample(request, subject):
     """
     Үлгі нұсқа: build_variant() банктен нұсқа құрады, бірақ дерекқорға ештеңе
     жазылмайды (Attempt жасалмайды). Бет жаңартылған сайын жаңа нұсқа шығады.
@@ -215,7 +290,7 @@ def bank_sample(request):
     language = SampleVariantForm(request.GET).get_language()
     context = {"language": language, "languages": Language.choices}
     try:
-        context["summary"] = variant_summary(build_variant(language))
+        context["summary"] = variant_summary(subject, build_variant(subject, language))
     except AttemptError as error:
         context["error"] = str(error)
     return render(request, "teacher/bank_sample.html", context)
@@ -227,15 +302,17 @@ def bank_sample(request):
 RESULTS_PER_PAGE = 50
 
 
-def filtered_attempts(request):
+def filtered_attempts(request, subject):
     """
-    Сүзгіден өткен әрекеттер (нәтижелер беті мен CSV үшін ортақ).
+    Пәннің сүзгіден өткен әрекеттері (нәтижелер беті мен CSV үшін ортақ).
     Алдымен мерзімі өткен әрекеттер аяқталады — балы дұрыс көрінсін.
     """
     finish_expired_attempts()
-    filter_form = ResultFilterForm(request.GET)
+    filter_form = ResultFilterForm(request.GET, subject=subject)
     attempts = filter_form.filter(
-        Attempt.objects.select_related("user__profile__group", "session").order_by(
+        Attempt.objects.filter(session__subject=subject)
+        .select_related("user__profile__group", "session__subject")
+        .order_by(
             "-session__opens_at", "user__last_name", "user__first_name", "user__username"
         )
     )
@@ -243,8 +320,9 @@ def filtered_attempts(request):
 
 
 @staff_member_required
-def results(request):
-    filter_form, attempts = filtered_attempts(request)
+@subject_required
+def results(request, subject):
+    filter_form, attempts = filtered_attempts(request, subject)
     page = Paginator(attempts, RESULTS_PER_PAGE).get_page(request.GET.get("page"))
 
     # Бет ауыстырғанда және CSV жүктегенде сүзгі сақталуы үшін
@@ -263,10 +341,11 @@ def results(request):
 
 
 @staff_member_required
-def results_export(request):
+@subject_required
+def results_export(request, subject):
     """Сүзгіден өткен нәтижелерді CSV файл етіп береді."""
-    _filter_form, attempts = filtered_attempts(request)
-    filename = f"results-{timezone.localdate():%Y-%m-%d}.csv"
+    _filter_form, attempts = filtered_attempts(request, subject)
+    filename = f"results-{subject.code}-{timezone.localdate():%Y-%m-%d}.csv"
     response = HttpResponse(content_type="text/csv; charset=utf-8")
     response["Content-Disposition"] = f'attachment; filename="{filename}"'
     write_results_csv(attempts, response)
