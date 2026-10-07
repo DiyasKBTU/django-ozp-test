@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% load i18n %}
+
+{% block content %}
+<div class="p-4 p-md-5 bg-white rounded shadow-sm">
+    <h1 class="h3 mb-3">{% translate "Информатика пәні бойынша ПББ тестіне дайындық" %}</h1>
+    <p class="lead">
+        {% blocktranslate %}Тест нақты форматта өтеді: {{ questions_total }} сұрақ, {{ duration_minutes }} минут.{% endblocktranslate %}
+    </p>
+    <ul>
+        <li>{% blocktranslate %}Әр дұрыс жауап — 1 балл, ең жоғары балл — {{ questions_total }}.{% endblocktranslate %}</li>
+        <li>{% translate "Тест оқытушы белгілеген уақытта ғана ашылады." %}</li>
+        <li>{% translate "Аяқтаған соң балыңызды, дұрыс жауаптарды және әлсіз тақырыптарыңызды көресіз." %}</li>
+    </ul>
+</div>
+{% endblock %}
