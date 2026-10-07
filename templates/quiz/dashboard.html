@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+{% load i18n %}
+
+{% block title %}{% translate "Кабинет" %}{% endblock %}
+
+{% block content %}
+<h1 class="h4 mb-4">{% translate "Жеке кабинет" %}</h1>
+
+<div class="row g-4">
+    {# Ашық сессиялар: тестті бастауға болады #}
+    <div class="col-lg-4">
+        <div class="card h-100 border-success">
+            <div class="card-header bg-success text-white">{% translate "Ашық сессиялар" %}</div>
+            <ul class="list-group list-group-flush">
+                {% for row in open %}
+                    <li class="list-group-item">
+                        <div class="fw-semibold">{{ row.session.title }}</div>
+                        <div class="small text-muted mb-2">
+                            {% blocktranslate with closes=row.session.closes_at|date:"d.m.Y, H:i" %}Жабылады: {{ closes }}{% endblocktranslate %}
+                        </div>
+                        {% if row.attempt.status == "finished" %}
+                            <span class="badge text-bg-secondary">{% translate "Тапсырылды" %}</span>
+                        {% elif row.attempt %}
+                            <a class="btn btn-sm btn-warning" href="{% url 'quiz:session_start' row.session.pk %}">{% translate "Жалғастыру" %}</a>
+                        {% else %}
+                            <a class="btn btn-sm btn-success" href="{% url 'quiz:session_start' row.session.pk %}">{% translate "Бастау" %}</a>
+                        {% endif %}
+                    </li>
+                {% empty %}
+                    <li class="list-group-item text-muted">{% translate "Қазір ашық сессия жоқ." %}</li>
+                {% endfor %}
+            </ul>
+        </div>
+    </div>
+
+    {# Алдағы сессиялар: ашылуына қалған уақыт #}
+    <div class="col-lg-4">
+        <div class="card h-100">
+            <div class="card-header">{% translate "Алдағы сессиялар" %}</div>
+            <ul class="list-group list-group-flush">
+                {% for row in upcoming %}
+                    <li class="list-group-item">
+                        <div class="fw-semibold">{{ row.session.title }}</div>
+                        <div class="small text-muted">
+                            {{ row.session.opens_at|date:"d.m.Y, H:i" }} – {{ row.session.closes_at|date:"d.m.Y, H:i" }}
+                        </div>
+                        <div class="small">
+                            {% with days=row.opens_in.days hours=row.opens_in.hours minutes=row.opens_in.minutes %}
+                                {% if days %}
+                                    {% blocktranslate %}Ашылуына қалды: {{ days }} күн {{ hours }} сағ.{% endblocktranslate %}
+                                {% else %}
+                                    {% blocktranslate %}Ашылуына қалды: {{ hours }} сағ. {{ minutes }} мин.{% endblocktranslate %}
+                                {% endif %}
+                            {% endwith %}
+                        </div>
+                    </li>
+                {% empty %}
+                    <li class="list-group-item text-muted">{% translate "Алдағы сессия жоқ." %}</li>
+                {% endfor %}
+            </ul>
+        </div>
+    </div>
+
+    {# Өткен (жабылған) сессиялар #}
+    <div class="col-lg-4">
+        <div class="card h-100">
+            <div class="card-header">{% translate "Өткен сессиялар" %}</div>
+            <ul class="list-group list-group-flush">
+                {% for row in past %}
+                    <li class="list-group-item">
+                        <div class="fw-semibold">{{ row.session.title }}</div>
+                        <div class="small text-muted">
+                            {{ row.session.opens_at|date:"d.m.Y, H:i" }} – {{ row.session.closes_at|date:"d.m.Y, H:i" }}
+                        </div>
+                        {% if not row.attempt %}
+                            <span class="badge text-bg-light border">{% translate "Тапсырылмады" %}</span>
+                        {% endif %}
+                    </li>
+                {% empty %}
+                    <li class="list-group-item text-muted">{% translate "Өткен сессия жоқ." %}</li>
+                {% endfor %}
+            </ul>
+        </div>
+    </div>
+</div>
+
+{# Студенттің тест әрекеттері #}
+<h2 class="h5 mt-5 mb-3">{% translate "Менің тесттерім" %}</h2>
+{% if attempts %}
+    <div class="table-responsive bg-white rounded shadow-sm">
+        <table class="table table-sm align-middle mb-0">
+            <thead>
+                <tr>
+                    <th>{% translate "Күні" %}</th>
+                    <th>{% translate "Сессия" %}</th>
+                    <th>{% translate "Тест тілі" %}</th>
+                    <th>{% translate "Балы" %}</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for attempt in attempts %}
+                    <tr>
+                        <td>{{ attempt.started_at|date:"d.m.Y, H:i" }}</td>
+                        <td>{{ attempt.session.title }}</td>
+                        <td>{{ attempt.get_language_display }}</td>
+                        <td>
+                            {% if attempt.status == "finished" %}
+                                <strong>{{ attempt.score|default:0 }} / {{ questions_total }}</strong>
+                            {% else %}
+                                <span class="badge text-bg-warning">{{ attempt.get_status_display }}</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+{% else %}
+    <p class="text-muted">{% translate "Сіз әлі тест тапсырған жоқсыз." %}</p>
+{% endif %}
+{% endblock %}

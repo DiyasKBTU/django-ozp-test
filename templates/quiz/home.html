@@ -12,5 +12,16 @@
         <li>{% translate "Тест оқытушы белгілеген уақытта ғана ашылады." %}</li>
         <li>{% translate "Аяқтаған соң балыңызды, дұрыс жауаптарды және әлсіз тақырыптарыңызды көресіз." %}</li>
     </ul>
+
+    <div class="d-flex flex-wrap gap-2 mt-4">
+        {% if user.is_staff %}
+            <a class="btn btn-primary" href="{% url 'quiz:teacher_questions' %}">{% translate "Сұрақтар банкі" %}</a>
+        {% elif user.is_authenticated %}
+            <a class="btn btn-primary" href="{% url 'quiz:dashboard' %}">{% translate "Кабинетке өту" %}</a>
+        {% else %}
+            <a class="btn btn-primary" href="{% url 'accounts:login' %}">{% translate "Кіру" %}</a>
+            <a class="btn btn-outline-primary" href="{% url 'accounts:register' %}">{% translate "Тіркелу" %}</a>
+        {% endif %}
+    </div>
 </div>
 {% endblock %}

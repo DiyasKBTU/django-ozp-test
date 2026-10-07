@@ -6,6 +6,9 @@ app_name = "quiz"
 
 urlpatterns = [
     path("", views.home, name="home"),
+    # ---------- Студент беттері ----------
+    path("dashboard/", views.dashboard, name="dashboard"),
+    path("session/<int:session_id>/start/", views.session_start, name="session_start"),
     # ---------- Оқытушы беттері ----------
     path("teacher/questions/", teacher_views.question_list, name="teacher_questions"),
     path(

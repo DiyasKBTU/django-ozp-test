@@ -1,10 +1,12 @@
 """
-Бизнес-логика (TZ.md, 3–4-бөлімдер): сұрақты сақтау және көшіру, банк толуы.
+Бизнес-логика (TZ.md, 3–4-бөлімдер): сұрақты сақтау және көшіру, банк толуы,
+студентке көрінетін сессиялар.
 Нұсқа құру мен балл есептеу кейінгі кезеңдерде осында қосылады.
 """
 
 from django.db import transaction
 from django.db.models import Count, Q
+from django.utils import timezone
 
 from .constants import (
     LEVEL_QUOTA,
@@ -12,7 +14,7 @@ from .constants import (
     MIN_QUESTIONS_PER_SUBTOPIC,
     QUESTIONS_PER_CONTEXT,
 )
-from .models import Answer, Context, Language, Level, Question, Subtopic
+from .models import Answer, Context, ExamSession, Language, Level, Question, Subtopic
 
 
 # ---------- Сұрақтар ----------
@@ -159,3 +161,59 @@ def bank_coverage():
         "min_contexts": MIN_CONTEXTS,
         "questions_per_context": QUESTIONS_PER_CONTEXT,
     }
+
+
+# ---------- Студентке арналған сессиялар ----------
+
+
+def visible_sessions(user):
+    """
+    Студентке көрінетін белсенді сессиялар: оның тобына арналғандары
+    және топтары бос (барлығына арналған) сессиялар.
+    """
+    profile = getattr(user, "profile", None)
+    group = profile.group if profile else None
+
+    for_group = Q(groups__isnull=True)
+    if group:
+        for_group |= Q(groups=group)
+    return ExamSession.objects.filter(for_group, is_active=True).distinct()
+
+
+def split_duration(duration):
+    """
+    Уақыт аралығын күн, сағат, минутқа бөледі (шаблонда аударылатын мәтінмен
+    көрсету үшін; Django-ның timeuntil сүзгісінде қазақша аударма жоқ).
+    """
+    minutes_total = int(duration.total_seconds()) // 60
+    hours_total, minutes = divmod(minutes_total, 60)
+    days, hours = divmod(hours_total, 24)
+    return {"days": days, "hours": hours, "minutes": minutes}
+
+
+def dashboard_sessions(user, now=None):
+    """
+    Кабинеттегі үш тізім: алдағы, ашық және өткен сессиялар.
+
+    Шекаралар: opens_at <= уақыт < closes_at — ашық, яғни opens_at сәтінде
+    сессия ашылады, closes_at сәтінде жабылады. Әр жолда студенттің осы
+    сессиядағы әрекеті де беріледі (болмаса — None).
+    """
+    if now is None:
+        now = timezone.now()
+    attempts = {attempt.session_id: attempt for attempt in user.attempts.all()}
+
+    upcoming, open_now, past = [], [], []
+    for session in visible_sessions(user).order_by("opens_at"):
+        row = {"session": session, "attempt": attempts.get(session.pk)}
+        if now < session.opens_at:
+            row["opens_in"] = split_duration(session.opens_at - now)
+            upcoming.append(row)
+        elif now < session.closes_at:
+            open_now.append(row)
+        else:
+            past.append(row)
+
+    # Өткен сессиялар — ең соңғысы бірінші
+    past.reverse()
+    return {"upcoming": upcoming, "open": open_now, "past": past}

@@ -35,7 +35,14 @@ from .models import (
     Subtopic,
     Topic,
 )
-from .services import bank_coverage
+from apps.accounts.models import StudyGroup
+
+from .services import (
+    bank_coverage,
+    dashboard_sessions,
+    split_duration,
+    visible_sessions,
+)
 
 
 def run_command(*args):
@@ -715,3 +722,176 @@ class BankCoverageTests(TeacherTestCase):
         response = self.client.get(reverse("quiz:teacher_bank"))
         # Бос банк: 20 тақырыпша × 8 ұяшық + қорытынды 8 ұяшық + 2 тілдің контексттері
         self.assertContains(response, 'class="missing', count=8 * SUBTOPICS_COUNT + 8 + 2)
+
+
+# ---------- 3-кезең: студент кабинеті және сессиялар ----------
+
+
+class StudentTestCase(TestCase):
+    """Екі топ және ИНФ-21 тобындағы кірген студент."""
+
+    def setUp(self):
+        self.group = StudyGroup.objects.create(name="ИНФ-21")
+        self.other_group = StudyGroup.objects.create(name="ИНФ-22")
+        self.student = User.objects.create_user(username="student", password="pass12345")
+        self.student.profile.group = self.group
+        self.student.profile.save()
+        self.client.force_login(self.student)
+
+    def session_for(self, *groups, **kwargs):
+        """Берілген топтарға (бос болса — барлығына) арналған сессия."""
+        session = make_session(**kwargs)
+        session.groups.set(groups)
+        return session
+
+
+class DashboardTests(StudentTestCase):
+    def test_guest_is_redirected_to_login(self):
+        self.client.logout()
+        response = self.client.get(reverse("quiz:dashboard"))
+        self.assertRedirects(
+            response, f"{reverse('accounts:login')}?next={reverse('quiz:dashboard')}"
+        )
+
+    def test_only_own_group_and_all_groups_sessions_are_visible(self):
+        own = self.session_for(self.group, title="Өз тобы")
+        for_all = self.session_for(title="Барлығына")
+        both = self.session_for(self.group, self.other_group, title="Екі топқа")
+        self.session_for(self.other_group, title="Бөтен топ")
+        self.session_for(self.group, title="Белсенді емес", is_active=False)
+
+        self.assertCountEqual(visible_sessions(self.student), [own, for_all, both])
+
+        response = self.client.get(reverse("quiz:dashboard"))
+        self.assertContains(response, "Өз тобы")
+        self.assertContains(response, "Барлығына")
+        self.assertContains(response, "Екі топқа", count=1)
+        self.assertNotContains(response, "Бөтен топ")
+        self.assertNotContains(response, "Белсенді емес")
+
+    def test_student_without_group_sees_only_sessions_for_all(self):
+        for_all = self.session_for(title="Барлығына")
+        self.session_for(self.group, title="Өз тобы")
+        self.student.profile.group = None
+        self.student.profile.save()
+        self.assertEqual(list(visible_sessions(self.student)), [for_all])
+
+    def test_open_close_boundaries(self):
+        now = timezone.now()
+        session = self.session_for(
+            self.group, opens_at=now, closes_at=now + timedelta(hours=2)
+        )
+        second = timedelta(seconds=1)
+
+        def list_name_at(moment):
+            lists = dashboard_sessions(self.student, now=moment)
+            for name in ["upcoming", "open", "past"]:
+                if any(row["session"] == session for row in lists[name]):
+                    return name
+            return None
+
+        self.assertEqual(list_name_at(session.opens_at - second), "upcoming")
+        self.assertEqual(list_name_at(session.opens_at), "open")
+        self.assertEqual(list_name_at(session.closes_at - second), "open")
+        self.assertEqual(list_name_at(session.closes_at), "past")
+        self.assertEqual(list_name_at(session.closes_at + second), "past")
+
+    def test_three_lists_on_page(self):
+        now = timezone.now()
+        upcoming = self.session_for(
+            self.group,
+            opens_at=now + timedelta(days=2),
+            closes_at=now + timedelta(days=2, hours=4),
+        )
+        open_now = self.session_for(self.group)
+        past = self.session_for(
+            self.group,
+            opens_at=now - timedelta(days=2),
+            closes_at=now - timedelta(days=1),
+        )
+
+        response = self.client.get(reverse("quiz:dashboard"))
+        for name, session in [("upcoming", upcoming), ("open", open_now), ("past", past)]:
+            with self.subTest(name=name):
+                rows = response.context[name]
+                self.assertEqual([row["session"] for row in rows], [session])
+        # «Бастау» тек ашық сессияда
+        self.assertContains(response, reverse("quiz:session_start", args=[open_now.pk]))
+        self.assertNotContains(response, reverse("quiz:session_start", args=[upcoming.pk]))
+        self.assertNotContains(response, reverse("quiz:session_start", args=[past.pk]))
+        # Ашылуына қалған уақыт (тест кезінде бірнеше миллисекунд өтеді)
+        self.assertContains(response, "Ашылуына қалды: 1 күн 23 сағ.")
+
+    def test_split_duration(self):
+        self.assertEqual(
+            split_duration(timedelta(days=2, hours=3, minutes=15, seconds=59)),
+            {"days": 2, "hours": 3, "minutes": 15},
+        )
+        self.assertEqual(
+            split_duration(timedelta(minutes=45)), {"days": 0, "hours": 0, "minutes": 45}
+        )
+
+    def test_attempt_history_shows_only_own_attempts(self):
+        session = self.session_for(self.group, title="Сессия-1")
+        Attempt.objects.create(
+            user=self.student,
+            session=session,
+            language="kk",
+            deadline=session.closes_at,
+            status=Attempt.Status.FINISHED,
+            score=37,
+        )
+        other_student = User.objects.create_user(username="other", password="pass12345")
+        other_session = self.session_for(title="Бөтен әрекет")
+        Attempt.objects.create(
+            user=other_student,
+            session=other_session,
+            language="ru",
+            deadline=other_session.closes_at,
+        )
+
+        response = self.client.get(reverse("quiz:dashboard"))
+        self.assertEqual(len(response.context["attempts"]), 1)
+        self.assertContains(response, "37 / 50")
+        self.assertContains(response, "Тапсырылды")
+        # Тапсырылған сессияда «Бастау» батырмасы жоқ
+        self.assertNotContains(response, reverse("quiz:session_start", args=[session.pk]))
+
+    def test_dashboard_in_russian(self):
+        self.client.cookies["django_language"] = "ru"
+        self.assertContains(self.client.get(reverse("quiz:dashboard")), 'lang="ru"')
+
+
+class SessionStartTests(StudentTestCase):
+    def get(self, session):
+        return self.client.get(reverse("quiz:session_start", args=[session.pk]))
+
+    def test_own_session_opens(self):
+        response = self.get(self.session_for(self.group))
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.context["is_open"])
+
+    def test_other_group_session_is_404(self):
+        self.assertEqual(self.get(self.session_for(self.other_group)).status_code, 404)
+
+    def test_inactive_session_is_404(self):
+        self.assertEqual(self.get(self.session_for(is_active=False)).status_code, 404)
+
+    def test_closed_session_is_not_open(self):
+        now = timezone.now()
+        session = self.session_for(opens_at=now - timedelta(hours=3), closes_at=now)
+        self.assertFalse(self.get(session).context["is_open"])
+
+    def test_guest_is_redirected_to_login(self):
+        self.client.logout()
+        response = self.get(self.session_for())
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(reverse("accounts:login"), response["Location"])
+
+    def test_student_cannot_open_teacher_pages(self):
+        for url_name in ["teacher_questions", "teacher_contexts", "teacher_bank"]:
+            with self.subTest(url_name=url_name):
+                response = self.client.get(reverse(f"quiz:{url_name}"))
+                # staff_member_required бетті көрсетпей, admin кіру бетіне жібереді
+                self.assertEqual(response.status_code, 302)
+                self.assertIn(reverse("admin:login"), response["Location"])

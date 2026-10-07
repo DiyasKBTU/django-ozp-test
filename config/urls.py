@@ -7,6 +7,7 @@ urlpatterns = [
     path("admin/", admin.site.urls),
     # Интерфейс тілін ауыстыру (Django-ның дайын set_language, POST)
     path("i18n/", include("django.conf.urls.i18n")),
+    path("accounts/", include("apps.accounts.urls")),
     path("", include("apps.quiz.urls")),
 ]
 

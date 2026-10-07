@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% load i18n %}
+
+{% block title %}{{ session.title }}{% endblock %}
+
+{% block content %}
+<div class="bg-white rounded shadow-sm p-4">
+    <h1 class="h4 mb-2">{{ session.title }}</h1>
+    <p class="text-muted">
+        {{ session.opens_at|date:"d.m.Y, H:i" }} – {{ session.closes_at|date:"d.m.Y, H:i" }}
+    </p>
+    {% if is_open %}
+        {# 5-кезеңде мұнда тест тілін таңдау формасы болады #}
+        <div class="alert alert-info">{% translate "Тестті бастау мүмкіндігі жақын арада қосылады." %}</div>
+    {% else %}
+        <div class="alert alert-warning">{% translate "Бұл сессия қазір ашық емес." %}</div>
+    {% endif %}
+    <a class="btn btn-outline-secondary" href="{% url 'quiz:dashboard' %}">{% translate "Кабинетке оралу" %}</a>
+</div>
+{% endblock %}

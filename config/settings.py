@@ -87,11 +87,17 @@ DATABASES = {
 }
 
 
+# Кіру/шығу: кіргеннен кейін рөлге қарай бағыттау accounts:after_login-де
+LOGIN_URL = "accounts:login"
+LOGIN_REDIRECT_URL = "accounts:after_login"
+LOGOUT_REDIRECT_URL = "quiz:home"
+
+# Django-ның дайын тексерулері, хабарламалары қазақша (apps/accounts/validators.py)
 AUTH_PASSWORD_VALIDATORS = [
-    {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
-    {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},
-    {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
-    {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
+    {"NAME": "apps.accounts.validators.UserAttributeSimilarityValidator"},
+    {"NAME": "apps.accounts.validators.MinimumLengthValidator"},
+    {"NAME": "apps.accounts.validators.CommonPasswordValidator"},
+    {"NAME": "apps.accounts.validators.NumericPasswordValidator"},
 ]
 
 
