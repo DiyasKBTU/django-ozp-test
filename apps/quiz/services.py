@@ -4,6 +4,7 @@
 аяқтау, балл есептеу) және нәтиже талдауы.
 """
 
+import csv
 import logging
 import math
 import random
@@ -705,6 +706,89 @@ def question_page_data(attempt, item, now=None):
         "total": total,
         "remaining_seconds": remaining_seconds(attempt, now),
     }
+
+
+# ---------- Оқытушының нәтижелер беті және CSV (TZ.md, 3-бөлім, 8-тармақ) ----------
+
+
+def results_rows(attempts):
+    """
+    Нәтижелер кестесінің жолдары: әрекет, студенттің аты-жөні, тобы, пайызы
+    және жұмсалған уақыты (минут). attempts — select_related жасалған тізім.
+    """
+    rows = []
+    for attempt in attempts:
+        profile = getattr(attempt.user, "profile", None)
+        spent_minutes = None
+        if attempt.finished_at:
+            spent_minutes = int((attempt.finished_at - attempt.started_at).total_seconds()) // 60
+        rows.append(
+            {
+                "attempt": attempt,
+                "student": attempt.user.get_full_name() or attempt.user.username,
+                "group": profile.group if profile and profile.group else None,
+                "percent": percent(attempt.score or 0, QUESTIONS_TOTAL),
+                "spent_minutes": spent_minutes,
+            }
+        )
+    return rows
+
+
+def results_summary(attempts):
+    """Сүзілген нәтижелер бойынша қысқаша: әрекет саны, аяқталғаны, орташа балл."""
+    finished = [
+        attempt.score or 0
+        for attempt in attempts
+        if attempt.status == Attempt.Status.FINISHED
+    ]
+    average = round(sum(finished) / len(finished), 1) if finished else None
+    return {"count": len(attempts), "finished": len(finished), "average": average}
+
+
+def write_results_csv(attempts, output):
+    """
+    Нәтижелерді CSV етіп output-қа жазады (HttpResponse немесе файл).
+    Excel кириллицаны дұрыс ашуы үшін UTF-8 BOM және «;» бөлгіші қолданылады.
+    """
+    output.write("﻿")
+    writer = csv.writer(output, delimiter=";")
+    writer.writerow(
+        [
+            _("Студент"),
+            _("Логин"),
+            _("Топ"),
+            _("Сессия"),
+            _("Тест тілі"),
+            _("Басталды"),
+            _("Аяқталды"),
+            _("Күйі"),
+            _("Балл"),
+            _("Пайыз"),
+            _("Уақыт (мин)"),
+        ]
+    )
+
+    def local(moment):
+        return timezone.localtime(moment).strftime("%d.%m.%Y %H:%M") if moment else ""
+
+    for row in results_rows(attempts):
+        attempt = row["attempt"]
+        is_finished = attempt.status == Attempt.Status.FINISHED
+        writer.writerow(
+            [
+                row["student"],
+                attempt.user.username,
+                row["group"] or "",
+                attempt.session.title,
+                attempt.get_language_display(),
+                local(attempt.started_at),
+                local(attempt.finished_at),
+                attempt.get_status_display(),
+                attempt.score if is_finished else "",
+                row["percent"] if is_finished else "",
+                row["spent_minutes"] if is_finished else "",
+            ]
+        )
 
 
 # ---------- Нәтиже (TZ.md, 3-бөлім, 7-тармақ) ----------

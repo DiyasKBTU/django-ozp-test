@@ -13,7 +13,7 @@
         </div>
     </div>
     {% if user.is_staff %}
-        <a class="btn btn-sm btn-outline-secondary" href="{% url 'admin:quiz_attempt_changelist' %}">{% translate "Барлық әрекеттер" %}</a>
+        <a class="btn btn-sm btn-outline-secondary" href="{% url 'quiz:teacher_results' %}">{% translate "Барлық нәтижелер" %}</a>
     {% else %}
         <a class="btn btn-sm btn-outline-secondary" href="{% url 'quiz:dashboard' %}">{% translate "Кабинетке оралу" %}</a>
     {% endif %}

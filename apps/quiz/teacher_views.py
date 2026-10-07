@@ -1,5 +1,5 @@
 """
-Оқытушы беттері (/teacher/...): сұрақтар, контексттер, банк толуы.
+Оқытушы беттері (/teacher/...): сұрақтар, контексттер, банк толуы, нәтижелер.
 Барлығы тек оқытушыға (is_staff) ашық.
 """
 
@@ -7,31 +7,38 @@ from django.contrib import messages
 from django.contrib.admin.views.decorators import staff_member_required
 from django.core.paginator import Paginator
 from django.db.models import Count, Q
+from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
+from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils.translation import gettext as _
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_POST
 
-from .constants import QUESTIONS_PER_CONTEXT
+from .constants import QUESTIONS_PER_CONTEXT, QUESTIONS_TOTAL
 from .forms import (
     AnswerFormSet,
     ContextForm,
     QuestionFilterForm,
     QuestionForm,
+    ResultFilterForm,
     SampleVariantForm,
     initial_from_query,
 )
-from .models import Context, Language, Question
+from .models import Attempt, Context, Language, Question
 from .services import (
     AttemptError,
     bank_coverage,
     build_variant,
     copy_question,
+    finish_expired_attempts,
+    results_rows,
+    results_summary,
     save_question,
     toggle_question_active,
     variant_summary,
+    write_results_csv,
 )
 
 # Сұрақтар тізімінің бір бетіндегі жол саны
@@ -209,3 +216,55 @@ def bank_sample(request):
     except AttemptError as error:
         context["error"] = str(error)
     return render(request, "teacher/bank_sample.html", context)
+
+
+# ---------- Нәтижелер ----------
+
+# Нәтижелер кестесінің бір бетіндегі жол саны
+RESULTS_PER_PAGE = 50
+
+
+def filtered_attempts(request):
+    """
+    Сүзгіден өткен әрекеттер (нәтижелер беті мен CSV үшін ортақ).
+    Алдымен мерзімі өткен әрекеттер аяқталады — балы дұрыс көрінсін.
+    """
+    finish_expired_attempts()
+    filter_form = ResultFilterForm(request.GET)
+    attempts = filter_form.filter(
+        Attempt.objects.select_related("user__profile__group", "session").order_by(
+            "-session__opens_at", "user__last_name", "user__first_name", "user__username"
+        )
+    )
+    return filter_form, attempts
+
+
+@staff_member_required
+def results(request):
+    filter_form, attempts = filtered_attempts(request)
+    page = Paginator(attempts, RESULTS_PER_PAGE).get_page(request.GET.get("page"))
+
+    # Бет ауыстырғанда және CSV жүктегенде сүзгі сақталуы үшін
+    query = request.GET.copy()
+    query.pop("page", None)
+
+    context = {
+        "filter_form": filter_form,
+        "page": page,
+        "rows": results_rows(page),
+        "summary": results_summary(list(attempts)),
+        "query": query.urlencode(),
+        "questions_total": QUESTIONS_TOTAL,
+    }
+    return render(request, "teacher/results.html", context)
+
+
+@staff_member_required
+def results_export(request):
+    """Сүзгіден өткен нәтижелерді CSV файл етіп береді."""
+    _filter_form, attempts = filtered_attempts(request)
+    filename = f"results-{timezone.localdate():%Y-%m-%d}.csv"
+    response = HttpResponse(content_type="text/csv; charset=utf-8")
+    response["Content-Disposition"] = f'attachment; filename="{filename}"'
+    write_results_csv(attempts, response)
+    return response

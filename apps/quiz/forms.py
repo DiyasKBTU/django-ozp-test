@@ -4,12 +4,15 @@ from django import forms
 from django.db.models import Q
 from django.utils.translation import gettext_lazy as _
 
+from apps.accounts.models import StudyGroup
+
 from .constants import ANSWERS_PER_QUESTION, QUESTIONS_PER_CONTEXT
 from .models import (
     LEVEL_FULL_DESCRIPTIONS,
     LEVEL_SHORT_DESCRIPTIONS,
     Answer,
     Context,
+    ExamSession,
     Language,
     Level,
     Question,
@@ -344,6 +347,40 @@ class AttemptAnswerForm(forms.Form):
         self.fields["answer"].choices = [
             (answer_id, answer_id) for answer_id in item.answer_order
         ]
+
+
+# ---------- Оқытушының нәтижелер беті ----------
+
+
+class ResultFilterForm(forms.Form):
+    """Нәтижелер сүзгісі (GET): сессия және топ."""
+
+    session = forms.ModelChoiceField(
+        label=_("Сессия"),
+        queryset=ExamSession.objects.all(),
+        required=False,
+        empty_label=_("Барлық сессия"),
+    )
+    group = forms.ModelChoiceField(
+        label=_("Топ"),
+        queryset=StudyGroup.objects.all(),
+        required=False,
+        empty_label=_("Барлық топ"),
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        add_bootstrap_classes(self)
+
+    def filter(self, attempts):
+        """Сүзгіні әрекеттер тізіміне қолданады (сүзгі қате болса — тізім өзгермейді)."""
+        if not self.is_valid():
+            return attempts
+        if self.cleaned_data["session"]:
+            attempts = attempts.filter(session=self.cleaned_data["session"])
+        if self.cleaned_data["group"]:
+            attempts = attempts.filter(user__profile__group=self.cleaned_data["group"])
+        return attempts
 
 
 # ---------- Сұрақтар тізімінің сүзгісі ----------

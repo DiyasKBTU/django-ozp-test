@@ -1761,3 +1761,137 @@ class AttemptAccessTests(TakeTestCase):
         # Бірақ бөтен тестке жауап бере алмайды
         question_url = reverse("quiz:attempt_question", args=[self.foreign.pk, 1])
         self.assertEqual(self.client.get(question_url).status_code, 404)
+
+
+# ---------- 6-кезең: оқытушының нәтижелер беті және CSV ----------
+
+
+class TeacherResultsTests(TestCase):
+    """Екі топ, екі сессия және бірнеше әрекет (сұрақсыз — тек балы)."""
+
+    def setUp(self):
+        self.teacher = User.objects.create_user(
+            username="teacher", password="pass12345", is_staff=True
+        )
+        self.client.force_login(self.teacher)
+        self.group_a = StudyGroup.objects.create(name="ИНФ-21")
+        self.group_b = StudyGroup.objects.create(name="ИНФ-22")
+        self.autumn = make_session(title="Күзгі сессия")
+        self.spring = make_session(title="Көктемгі сессия")
+        self.aigerim = self.make_student("aigerim", "Айгерім", "Сапарова", self.group_a)
+        self.dana = self.make_student("dana", "Дана", "Әлиева", self.group_b)
+
+        self.finished = self.make_attempt(self.aigerim, self.autumn, score=37)
+        self.other_session = self.make_attempt(self.aigerim, self.spring, score=20)
+        self.running = self.make_attempt(self.dana, self.autumn, score=None)
+
+    def make_student(self, username, first_name, last_name, group):
+        user = User.objects.create_user(
+            username=username, password="pass12345", first_name=first_name, last_name=last_name
+        )
+        user.profile.group = group
+        user.profile.save()
+        return user
+
+    def make_attempt(self, user, session, score):
+        now = timezone.now()
+        data = {
+            "user": user,
+            "session": session,
+            "language": "kk",
+            "started_at": now - timedelta(minutes=50),
+            "deadline": now + timedelta(minutes=75),
+        }
+        if score is not None:
+            data.update(
+                status=Attempt.Status.FINISHED, score=score, finished_at=now - timedelta(minutes=8)
+            )
+        return Attempt.objects.create(**data)
+
+    def get(self, **params):
+        return self.client.get(reverse("quiz:teacher_results"), params)
+
+    def export(self, **params):
+        response = self.client.get(reverse("quiz:teacher_results_export"), params)
+        return response, response.content.decode("utf-8")
+
+    def test_only_teacher_can_open(self):
+        student = User.objects.create_user(username="student", password="pass12345")
+        self.client.force_login(student)
+        for url_name in ["teacher_results", "teacher_results_export"]:
+            with self.subTest(url_name=url_name):
+                response = self.client.get(reverse(f"quiz:{url_name}"))
+                self.assertEqual(response.status_code, 302)
+                self.assertIn(reverse("admin:login"), response["Location"])
+
+    def test_all_results_are_listed(self):
+        response = self.get()
+        self.assertEqual(len(response.context["rows"]), 3)
+        self.assertContains(response, "Айгерім Сапарова")
+        self.assertContains(response, "ИНФ-21")
+        self.assertContains(response, f"37 / {QUESTIONS_TOTAL}")
+        self.assertContains(response, "74%")
+        self.assertContains(response, "Жүріп жатыр")
+        self.assertContains(response, reverse("quiz:attempt_result", args=[self.finished.pk]))
+        self.assertEqual(
+            response.context["summary"], {"count": 3, "finished": 2, "average": 28.5}
+        )
+
+    def test_filter_by_session_and_group(self):
+        response = self.get(session=self.autumn.pk)
+        attempts = [row["attempt"] for row in response.context["rows"]]
+        self.assertCountEqual(attempts, [self.finished, self.running])
+
+        response = self.get(group=self.group_a.pk)
+        attempts = [row["attempt"] for row in response.context["rows"]]
+        self.assertCountEqual(attempts, [self.finished, self.other_session])
+
+        response = self.get(session=self.autumn.pk, group=self.group_b.pk)
+        self.assertEqual([row["attempt"] for row in response.context["rows"]], [self.running])
+        # CSV сілтемесі сүзгіні сақтайды
+        self.assertContains(
+            response,
+            f"{reverse('quiz:teacher_results_export')}?session={self.autumn.pk}&amp;group={self.group_b.pk}",
+        )
+
+    def test_expired_attempt_is_shown_finished(self):
+        Attempt.objects.filter(pk=self.running.pk).update(
+            deadline=timezone.now() - timedelta(minutes=1)
+        )
+        self.get()
+        self.running.refresh_from_db()
+        self.assertEqual(self.running.status, Attempt.Status.FINISHED)
+        self.assertEqual(self.running.score, 0)
+
+    def test_csv_export(self):
+        response, content = self.export()
+        self.assertEqual(response["Content-Type"], "text/csv; charset=utf-8")
+        self.assertIn("attachment;", response["Content-Disposition"])
+        self.assertTrue(content.startswith("﻿"))
+
+        lines = content.lstrip("﻿").splitlines()
+        self.assertEqual(len(lines), 4)
+        self.assertTrue(lines[0].startswith("Студент;Логин;Топ;Сессия"))
+        row = next(line for line in lines if "Күзгі сессия" in line and "aigerim" in line)
+        columns = row.split(";")
+        self.assertEqual(columns[:4], ["Айгерім Сапарова", "aigerim", "ИНФ-21", "Күзгі сессия"])
+        self.assertEqual(columns[7:], ["Аяқталды", "37", "74", "42"])
+        # Аяқталмаған тестте балл жоқ
+        running = next(line for line in lines if "dana" in line).split(";")
+        self.assertEqual(running[7:], ["Жүріп жатыр", "", "", ""])
+
+    def test_csv_export_uses_filter(self):
+        _response, content = self.export(group=self.group_b.pk)
+        lines = content.lstrip("﻿").splitlines()
+        self.assertEqual(len(lines), 2)
+        self.assertIn("dana", lines[1])
+
+    def test_results_page_in_russian(self):
+        self.client.cookies["django_language"] = "ru"
+        self.assertContains(self.get(), "Скачать CSV")
+        _response, content = self.export()
+        self.assertTrue(content.lstrip("﻿").startswith("Студент;Логин;Группа;Сессия"))
+
+    def test_teacher_navigation_has_results_link(self):
+        response = self.client.get(reverse("quiz:teacher_questions"))
+        self.assertContains(response, reverse("quiz:teacher_results"))
