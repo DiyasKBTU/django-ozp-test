@@ -2,6 +2,7 @@ from collections import Counter
 from datetime import timedelta
 from io import StringIO
 
+from django.conf import settings
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
 from django.core.management import call_command
@@ -895,3 +896,67 @@ class SessionStartTests(StudentTestCase):
                 # staff_member_required бетті көрсетпей, admin кіру бетіне жібереді
                 self.assertEqual(response.status_code, 302)
                 self.assertIn(reverse("admin:login"), response["Location"])
+
+
+# ---------- Екі тіл ----------
+
+
+class TranslationTests(StudentTestCase):
+    """Тіл ауыстырғаннан кейін бет мәтіні орысшаға, қайта қазақшаға ауысады."""
+
+    def switch_language(self, code):
+        self.client.post(reverse("set_language"), {"language": code, "next": "/"})
+
+    def test_dashboard_switches_language(self):
+        self.switch_language("ru")
+        response = self.client.get(reverse("quiz:dashboard"))
+        self.assertContains(response, "Личный кабинет")
+        self.assertContains(response, "Выйти")
+        self.assertNotContains(response, "Жеке кабинет")
+
+        self.switch_language("kk")
+        response = self.client.get(reverse("quiz:dashboard"))
+        self.assertContains(response, "Жеке кабинет")
+        self.assertNotContains(response, "Личный кабинет")
+
+    def test_pages_are_in_russian(self):
+        self.client.logout()
+        self.switch_language("ru")
+        pages = {
+            reverse("quiz:home"): "Подготовка к тесту ОЗП по информатике",
+            reverse("accounts:login"): "Ещё не зарегистрированы?",
+            reverse("accounts:register"): "Повторите пароль",
+        }
+        for url, text in pages.items():
+            with self.subTest(url=url):
+                self.assertContains(self.client.get(url), text)
+
+        response = self.client.post(
+            reverse("accounts:login"), {"username": "student", "password": "wrong"}
+        )
+        self.assertContains(response, "Неверный логин или пароль.")
+
+    def test_teacher_pages_are_in_russian(self):
+        run_command("load_topics")
+        teacher = User.objects.create_user(
+            username="teacher", password="pass12345", is_staff=True
+        )
+        self.client.force_login(teacher)
+        self.switch_language("ru")
+        pages = {
+            reverse("quiz:teacher_questions"): "Новый вопрос",
+            reverse("quiz:teacher_question_create"): "Сохранить и добавить следующий",
+            reverse("quiz:teacher_contexts"): "Новый контекст",
+            reverse("quiz:teacher_bank"): "Наполненность банка",
+        }
+        for url, text in pages.items():
+            with self.subTest(url=url):
+                self.assertContains(self.client.get(url), text)
+
+    def test_russian_catalog_is_complete(self):
+        """Орысша .po файлында аударылмаған жол қалмауы керек."""
+        po_path = settings.BASE_DIR / "locale" / "ru" / "LC_MESSAGES" / "django.po"
+        entries = po_path.read_text(encoding="utf-8").split("\n\n")[1:]
+        # Аударылмаған жазба `msgstr ""` жолымен аяқталады (жалғасы жоқ)
+        untranslated = [entry for entry in entries if entry.strip().endswith('msgstr ""')]
+        self.assertEqual(untranslated, [])

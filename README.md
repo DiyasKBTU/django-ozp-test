@@ -40,6 +40,20 @@ Linux/macOS-та `.venv\Scripts\python` орнына `.venv/bin/python` жазы
 .venv\Scripts\python manage.py load_demo --delete
 ```
 
+## Аударма (қазақша / орысша)
+
+Интерфейстің бастапқы мәтіні — қазақша, орысша аудармасы — `locale/ru/LC_MESSAGES/django.po`. Дайын `.mo` файлдары git-те бар, сондықтан жай іске қосу үшін ештеңе қажет емес.
+
+Мәтін өзгерсе немесе жаңасы қосылса, GNU gettext керек (Windows: `winget install mlocati.GetText`, Ubuntu: `sudo apt install gettext`):
+
+```powershell
+# 1. Жаңа жолдарды .po файлдарына жинау
+.venv\Scripts\python manage.py makemessages -l kk -l ru --ignore=.venv
+# 2. locale/ru/LC_MESSAGES/django.po ішінде бос msgstr "" жолдарын аудару
+# 3. .mo файлдарын жасау (оларды да commit жасаңыз)
+.venv\Scripts\python manage.py compilemessages --ignore=.venv
+```
+
 ## Тесттер
 
 ```powershell

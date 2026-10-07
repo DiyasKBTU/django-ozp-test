@@ -54,6 +54,8 @@ cover/
 
 # Translations
 *.mo
+# Жобаның өз аудармалары git-те сақталады (gettext-сіз де жұмыс істеуі үшін)
+!locale/*/LC_MESSAGES/*.mo
 *.pot
 
 # Django stuff:
