@@ -43,4 +43,5 @@ urlpatterns = [
         name="teacher_context_edit",
     ),
     path("teacher/bank/", teacher_views.bank, name="teacher_bank"),
+    path("teacher/bank/sample/", teacher_views.bank_sample, name="teacher_bank_sample"),
 ]

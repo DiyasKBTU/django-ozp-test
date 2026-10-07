@@ -5,7 +5,15 @@
 
 {% block content %}
 
-<h1 class="h4 mb-2">{% translate "Банк толуы" %}</h1>
+<div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+    <h1 class="h4 mb-0 me-auto">{% translate "Банк толуы" %}</h1>
+    {# Үлгі нұсқа: банктен тест нұсқасы қалай құрылатынын тексеру (ештеңе сақталмайды) #}
+    {% for code, label in coverage.languages %}
+        <a class="btn btn-sm btn-outline-primary" href="{% url 'quiz:teacher_bank_sample' %}?lang={{ code }}">
+            {% blocktranslate %}Үлгі нұсқа ({{ label }}){% endblocktranslate %}
+        </a>
+    {% endfor %}
+</div>
 <p class="text-muted small mb-3">
     {% blocktranslate with min=coverage.min_questions %}Белсенді жеке сұрақтар саны (контекстік сұрақтар бөлек саналады). Қызыл: деңгейде сұрақ жоқ немесе тақырыпшада {{ min }}-дан аз сұрақ.{% endblocktranslate %}
 </p>

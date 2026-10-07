@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-07 11:32+0500\n"
+"POT-Creation-Date: 2026-10-07 11:38+0500\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -154,27 +154,31 @@ msgstr ""
 msgid "Дәл бір дұрыс жауап белгіленуі керек."
 msgstr ""
 
-#: .\apps\quiz\forms.py:134 .\apps\quiz\forms.py:326
+#: .\apps\quiz\forms.py:134 .\apps\quiz\forms.py:338
+#: .\templates\teacher\bank_sample.html:110
 msgid "Тақырып"
 msgstr ""
 
-#: .\apps\quiz\forms.py:136 .\apps\quiz\forms.py:332
-#: .\templates\teacher\bank.html:17 .\templates\teacher\question_list.html:30
+#: .\apps\quiz\forms.py:136 .\apps\quiz\forms.py:344
+#: .\templates\teacher\bank.html:25 .\templates\teacher\bank_sample.html:111
+#: .\templates\teacher\question_list.html:30
 msgid "Тақырыпша"
 msgstr ""
 
-#: .\apps\quiz\forms.py:141 .\apps\quiz\forms.py:339
+#: .\apps\quiz\forms.py:141 .\apps\quiz\forms.py:351
+#: .\templates\teacher\bank_sample.html:112
 #: .\templates\teacher\question_list.html:31
 msgid "Деңгей"
 msgstr ""
 
-#: .\apps\quiz\forms.py:146 .\apps\quiz\forms.py:291 .\apps\quiz\forms.py:344
+#: .\apps\quiz\forms.py:146 .\apps\quiz\forms.py:291 .\apps\quiz\forms.py:356
 #: .\templates\teacher\context_list.html:19
 #: .\templates\teacher\question_list.html:32
 msgid "Тіл"
 msgstr ""
 
-#: .\apps\quiz\forms.py:149 .\templates\teacher\context_form.html:4
+#: .\apps\quiz\forms.py:149 .\templates\teacher\bank_sample.html:113
+#: .\templates\teacher\context_form.html:4
 msgid "Контекст"
 msgstr ""
 
@@ -182,7 +186,7 @@ msgstr ""
 msgid "Жоқ (жеке сұрақ)"
 msgstr ""
 
-#: .\apps\quiz\forms.py:154
+#: .\apps\quiz\forms.py:154 .\templates\teacher\bank_sample.html:114
 msgid "Сұрақ мәтіні"
 msgstr ""
 
@@ -228,27 +232,27 @@ msgid ""
 "Бұл контекстке басқа тілдегі сұрақтар байланған, тілін өзгертуге болмайды."
 msgstr ""
 
-#: .\apps\quiz\forms.py:329
+#: .\apps\quiz\forms.py:341
 msgid "Барлық тақырып"
 msgstr ""
 
-#: .\apps\quiz\forms.py:335
+#: .\apps\quiz\forms.py:347
 msgid "Барлық тақырыпша"
 msgstr ""
 
-#: .\apps\quiz\forms.py:340
+#: .\apps\quiz\forms.py:352
 msgid "Барлық деңгей"
 msgstr ""
 
-#: .\apps\quiz\forms.py:345
+#: .\apps\quiz\forms.py:357
 msgid "Барлық тіл"
 msgstr ""
 
-#: .\apps\quiz\forms.py:348
+#: .\apps\quiz\forms.py:360
 msgid "Іздеу"
 msgstr ""
 
-#: .\apps\quiz\forms.py:353
+#: .\apps\quiz\forms.py:365
 msgid "Мәтін немесе код"
 msgstr ""
 
@@ -511,33 +515,33 @@ msgid ""
 "емес. Оқытушыға хабарлаңыз."
 msgstr ""
 
-#: .\apps\quiz\services.py:452 .\templates\quiz\session_start.html:16
+#: .\apps\quiz\services.py:519 .\templates\quiz\session_start.html:16
 msgid "Бұл сессия қазір ашық емес."
 msgstr ""
 
-#: .\apps\quiz\services.py:454
+#: .\apps\quiz\services.py:521
 msgid "Сіз бұл сессияда тестті бұрын бастағансыз."
 msgstr ""
 
-#: .\apps\quiz\teacher_views.py:69
+#: .\apps\quiz\teacher_views.py:79
 msgid "Сұрақ сақталды. Келесісін енгізіңіз."
 msgstr ""
 
-#: .\apps\quiz\teacher_views.py:72
+#: .\apps\quiz\teacher_views.py:82
 msgid "Сұрақ сақталды."
 msgstr ""
 
-#: .\apps\quiz\teacher_views.py:107
+#: .\apps\quiz\teacher_views.py:117
 msgid "Көшірмесі жасалды, қажет болса өңдеңіз."
 msgstr ""
 
-#: .\apps\quiz\teacher_views.py:118
+#: .\apps\quiz\teacher_views.py:128
 #, python-format
 msgid ""
 "Контекстте %(count)s белсенді сұрақ бар, бұл сұрақты белсендіруге болмайды."
 msgstr ""
 
-#: .\apps\quiz\teacher_views.py:145
+#: .\apps\quiz\teacher_views.py:155
 msgid "Контекст сақталды."
 msgstr ""
 
@@ -579,7 +583,7 @@ msgstr ""
 msgid "Сұрақтар"
 msgstr ""
 
-#: .\templates\base.html:49 .\templates\teacher\bank.html:55
+#: .\templates\base.html:49 .\templates\teacher\bank.html:63
 #: .\templates\teacher\context_list.html:4
 #: .\templates\teacher\context_list.html:9
 msgid "Контексттер"
@@ -725,31 +729,88 @@ msgstr ""
 msgid "Кабинетке оралу"
 msgstr ""
 
-#: .\templates\teacher\bank.html:4 .\templates\teacher\bank.html:8
+#: .\templates\teacher\bank.html:4 .\templates\teacher\bank.html:9
 msgid "Банк толуы"
 msgstr ""
 
-#: .\templates\teacher\bank.html:10
+#: .\templates\teacher\bank.html:13
+#, python-format
+msgid "Үлгі нұсқа (%(label)s)"
+msgstr ""
+
+#: .\templates\teacher\bank.html:18
 #, python-format
 msgid ""
 "Белсенді жеке сұрақтар саны (контекстік сұрақтар бөлек саналады). Қызыл: "
 "деңгейде сұрақ жоқ немесе тақырыпшада %(min)s-дан аз сұрақ."
 msgstr ""
 
-#: .\templates\teacher\bank.html:42
+#: .\templates\teacher\bank.html:50 .\templates\teacher\bank_sample.html:59
 msgid "Барлығы"
 msgstr ""
 
-#: .\templates\teacher\bank.html:44
+#: .\templates\teacher\bank.html:52
 #, python-format
 msgid "кемінде: A %(a)s, B %(b)s, C %(c)s"
 msgstr ""
 
-#: .\templates\teacher\bank.html:57
+#: .\templates\teacher\bank.html:65
 #, python-format
 msgid ""
 "Тестке %(count)s белсенді сұрағы бар контекст қана жарайды; әр тілде кемінде "
 "%(min)s контекст керек."
+msgstr ""
+
+#: .\templates\teacher\bank_sample.html:4
+#: .\templates\teacher\bank_sample.html:8
+msgid "Үлгі нұсқа"
+msgstr ""
+
+#: .\templates\teacher\bank_sample.html:16
+msgid "Жаңа нұсқа"
+msgstr ""
+
+#: .\templates\teacher\bank_sample.html:17
+msgid "Банк толуына оралу"
+msgstr ""
+
+#: .\templates\teacher\bank_sample.html:20
+msgid ""
+"Нұсқа студенттің тестіндей құрылады, бірақ ешқайда сақталмайды. Бет "
+"жаңартылған сайын жаңа нұсқа шығады."
+msgstr ""
+
+#: .\templates\teacher\bank_sample.html:25
+msgid "Нұсқа құру мүмкін болмады"
+msgstr ""
+
+#: .\templates\teacher\bank_sample.html:28
+msgid ""
+"Банк толуы кестесінен жетіспейтін тақырыпшалар мен контексттерді қараңыз."
+msgstr ""
+
+#: .\templates\teacher\bank_sample.html:36
+msgid "Нұсқа спецификацияның барлық ережесіне сәйкес."
+msgstr ""
+
+#: .\templates\teacher\bank_sample.html:38
+msgid ""
+"Нұсқа спецификацияға толық сәйкес емес: банкте қажет деңгейдегі сұрақ "
+"жетпейді."
+msgstr ""
+
+#: .\templates\teacher\bank_sample.html:46
+msgid "Деңгейлер"
+msgstr ""
+
+#: .\templates\teacher\bank_sample.html:71
+#, python-format
+msgid "Контексттер (%(count)s × %(per)s сұрақ)"
+msgstr ""
+
+#: .\templates\teacher\bank_sample.html:90
+#, python-format
+msgid "Тақырыпшалар (әрқайсынан %(per)s жеке сұрақ)"
 msgstr ""
 
 #: .\templates\teacher\context_form.html:4

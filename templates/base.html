@@ -49,7 +49,7 @@
                         <a class="nav-link{% if 'teacher_context' in url_name %} active{% endif %}" href="{% url 'quiz:teacher_contexts' %}">{% translate "Контексттер" %}</a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link{% if url_name == 'teacher_bank' %} active{% endif %}" href="{% url 'quiz:teacher_bank' %}">{% translate "Банк" %}</a>
+                        <a class="nav-link{% if 'teacher_bank' in url_name %} active{% endif %}" href="{% url 'quiz:teacher_bank' %}">{% translate "Банк" %}</a>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link" href="{% url 'admin:index' %}">{% translate "Admin" %}</a>

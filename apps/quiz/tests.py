@@ -1121,6 +1121,95 @@ class CreateAttemptTests(VariantTestCase):
         self.assertFalse(Attempt.objects.exists())
 
 
+class BankSampleTests(VariantTestCase):
+    """Оқытушының «Үлгі нұсқа» беті: /teacher/bank/sample/?lang=..."""
+
+    def setUp(self):
+        self.teacher = User.objects.create_user(
+            username="teacher", password="pass12345", is_staff=True
+        )
+        self.client.force_login(self.teacher)
+        self.url = reverse("quiz:teacher_bank_sample")
+
+    def get(self, lang=None):
+        return self.client.get(self.url, {"lang": lang} if lang else {})
+
+    def test_sample_for_each_language(self):
+        for language in ["kk", "ru"]:
+            with self.subTest(language=language):
+                response = self.get(language)
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.context["language"], language)
+                summary = response.context["summary"]
+                self.assertEqual(len(summary["questions"]), QUESTIONS_TOTAL)
+                self.assertTrue(all(q.language == language for q in summary["questions"]))
+                self.assertTrue(summary["all_ok"])
+                self.assertEqual(
+                    {item["level"]: item["count"] for item in summary["levels"]}, LEVEL_QUOTA
+                )
+                self.assertEqual(len(summary["subtopics"]), SUBTOPICS_COUNT)
+                self.assertEqual(len(summary["contexts"]), CONTEXTS_PER_TEST)
+                # 50 жолдық кесте: әр сұраққа бір жол (тақырып(ша) атауы жолда)
+                self.assertContains(response, "<tr", count=QUESTIONS_TOTAL + 1)
+                self.assertContains(response, "✓")
+
+    def test_nothing_is_saved(self):
+        self.get("kk")
+        self.get("ru")
+        self.assertFalse(Attempt.objects.exists())
+        self.assertFalse(AttemptQuestion.objects.exists())
+
+    def test_new_variant_on_every_reload(self):
+        first = [q.pk for q in self.get("kk").context["summary"]["questions"]]
+        second = [q.pk for q in self.get("kk").context["summary"]["questions"]]
+        self.assertNotEqual(first, second)
+        self.assertIn("no-cache", self.get("kk")["Cache-Control"])
+
+    def test_unknown_or_missing_language_falls_back_to_kazakh(self):
+        for lang in [None, "en", "x"]:
+            with self.subTest(lang=lang):
+                self.assertEqual(self.get(lang).context["language"], "kk")
+
+    def test_bank_error_is_shown(self):
+        Context.objects.filter(language="ru").update(is_active=False)
+        with self.assertLogs("apps.quiz.services", level="WARNING"):
+            response = self.get("ru")
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn("summary", response.context)
+        self.assertContains(response, "Нұсқа құру мүмкін болмады")
+        self.assertContains(response, "Банкте «Орысша» тіліндегі сұрақтар жеткіліксіз")
+
+    def test_rule_violation_is_marked(self):
+        # Жеке C сұрақтар жоқ: нұсқа құрылады, бірақ квота орындалмайды (✗)
+        Question.objects.filter(language="kk", context__isnull=True, level="C").update(
+            is_active=False
+        )
+        with self.assertLogs("apps.quiz.services", level="WARNING"):
+            response = self.get("kk")
+        summary = response.context["summary"]
+        self.assertFalse(summary["all_ok"])
+        self.assertFalse(summary["checks"]["levels"])
+        self.assertTrue(summary["checks"]["subtopics"])
+        self.assertTrue(summary["checks"]["contexts"])
+        self.assertContains(response, "✗")
+
+    def test_bank_page_has_sample_buttons(self):
+        response = self.client.get(reverse("quiz:teacher_bank"))
+        self.assertContains(response, f"{self.url}?lang=kk")
+        self.assertContains(response, f"{self.url}?lang=ru")
+
+    def test_student_cannot_open(self):
+        student = User.objects.create_user(username="student", password="pass12345")
+        self.client.force_login(student)
+        response = self.get("kk")
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(reverse("admin:login"), response["Location"])
+
+    def test_page_in_russian_interface(self):
+        self.client.cookies["django_language"] = "ru"
+        self.assertContains(self.get("kk"), "Образец варианта")
+
+
 # ---------- Екі тіл ----------
 
 
@@ -1183,3 +1272,6 @@ class TranslationTests(StudentTestCase):
         # Аударылмаған жазба `msgstr ""` жолымен аяқталады (жалғасы жоқ)
         untranslated = [entry for entry in entries if entry.strip().endswith('msgstr ""')]
         self.assertEqual(untranslated, [])
+        # makemessages ұқсас жолдан «болжап» қойған (fuzzy) аудармалар компиляцияланбайды
+        fuzzy = [entry for entry in entries if "fuzzy" in entry]
+        self.assertEqual(fuzzy, [])

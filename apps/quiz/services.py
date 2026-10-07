@@ -436,6 +436,73 @@ def build_variant(language, rng=None):
     return question_ids
 
 
+def variant_summary(question_ids):
+    """
+    Нұсқаның қорытындысы (оқытушының «Үлгі нұсқа» беті үшін): сұрақтар тест
+    ретімен және ережелердің орындалуы — сұрақ саны, A/B/C квотасы, әр
+    тақырыпшадан 2 жеке сұрақ, 2 контекст × 5 сұрақ. Дерекқорға ештеңе жазбайды.
+    """
+    by_id = Question.objects.select_related("subtopic__topic", "context").in_bulk(
+        question_ids
+    )
+    questions = [by_id[question_id] for question_id in question_ids]
+
+    level_counts = Counter(question.level for question in questions)
+    levels = [
+        {
+            "level": level,
+            "count": level_counts[level],
+            "quota": LEVEL_QUOTA[level],
+            "ok": level_counts[level] == LEVEL_QUOTA[level],
+        }
+        for level in Level.values
+    ]
+
+    single_counts = Counter(
+        question.subtopic_id for question in questions if question.context_id is None
+    )
+    subtopics = [
+        {
+            "subtopic": subtopic,
+            "count": single_counts[subtopic.pk],
+            "ok": single_counts[subtopic.pk] == SINGLE_QUESTIONS_PER_SUBTOPIC,
+        }
+        for subtopic in Subtopic.objects.select_related("topic")
+    ]
+
+    # Контексттер нұсқадағы ретімен (dict кірістіру ретін сақтайды)
+    context_counts = {}
+    for question in questions:
+        if question.context_id:
+            context_counts.setdefault(question.context, 0)
+            context_counts[question.context] += 1
+    contexts = [
+        {"context": context, "count": count, "ok": count == QUESTIONS_PER_CONTEXT}
+        for context, count in context_counts.items()
+    ]
+
+    checks = {
+        "total": len(questions) == QUESTIONS_TOTAL,
+        "levels": all(item["ok"] for item in levels),
+        "subtopics": all(item["ok"] for item in subtopics),
+        "contexts": len(contexts) == CONTEXTS_PER_TEST
+        and all(item["ok"] for item in contexts),
+    }
+    return {
+        "questions": questions,
+        "total": len(questions),
+        "levels": levels,
+        "subtopics": subtopics,
+        "contexts": contexts,
+        "checks": checks,
+        "all_ok": all(checks.values()),
+        "questions_total": QUESTIONS_TOTAL,
+        "contexts_per_test": CONTEXTS_PER_TEST,
+        "questions_per_context": QUESTIONS_PER_CONTEXT,
+        "per_subtopic": SINGLE_QUESTIONS_PER_SUBTOPIC,
+    }
+
+
 @transaction.atomic
 def create_attempt(user, session, language, now=None, rng=None):
     """

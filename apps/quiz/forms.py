@@ -319,6 +319,18 @@ class ContextForm(forms.ModelForm):
 # ---------- Сұрақтар тізімінің сүзгісі ----------
 
 
+class SampleVariantForm(forms.Form):
+    """Үлгі нұсқаның тілі (GET ?lang=kk немесе ?lang=ru)."""
+
+    lang = forms.ChoiceField(choices=Language.choices, required=False)
+
+    def get_language(self):
+        """Таңдалған тіл; бос немесе қате болса — қазақша."""
+        if self.is_valid() and self.cleaned_data["lang"]:
+            return self.cleaned_data["lang"]
+        return Language.KK
+
+
 class QuestionFilterForm(forms.Form):
     """Сұрақтар тізімінің сүзгісі (GET): тақырып, тақырыпша, деңгей, тіл, мәтіннен іздеу."""
 

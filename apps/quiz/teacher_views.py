@@ -11,6 +11,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils.translation import gettext as _
+from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_POST
 
 from .constants import QUESTIONS_PER_CONTEXT
@@ -19,10 +20,19 @@ from .forms import (
     ContextForm,
     QuestionFilterForm,
     QuestionForm,
+    SampleVariantForm,
     initial_from_query,
 )
-from .models import Context, Question
-from .services import bank_coverage, copy_question, save_question, toggle_question_active
+from .models import Context, Language, Question
+from .services import (
+    AttemptError,
+    bank_coverage,
+    build_variant,
+    copy_question,
+    save_question,
+    toggle_question_active,
+    variant_summary,
+)
 
 # Сұрақтар тізімінің бір бетіндегі жол саны
 QUESTIONS_PER_PAGE = 50
@@ -183,3 +193,19 @@ def context_edit(request, pk):
 @staff_member_required
 def bank(request):
     return render(request, "teacher/bank.html", {"coverage": bank_coverage()})
+
+
+@staff_member_required
+@never_cache
+def bank_sample(request):
+    """
+    Үлгі нұсқа: build_variant() банктен нұсқа құрады, бірақ дерекқорға ештеңе
+    жазылмайды (Attempt жасалмайды). Бет жаңартылған сайын жаңа нұсқа шығады.
+    """
+    language = SampleVariantForm(request.GET).get_language()
+    context = {"language": language, "languages": Language.choices}
+    try:
+        context["summary"] = variant_summary(build_variant(language))
+    except AttemptError as error:
+        context["error"] = str(error)
+    return render(request, "teacher/bank_sample.html", context)
