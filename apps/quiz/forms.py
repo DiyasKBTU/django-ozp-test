@@ -1,12 +1,26 @@
+from urllib.parse import urlencode
+
 from django import forms
+from django.db.models import Q
 from django.utils.translation import gettext_lazy as _
 
-from .constants import ANSWERS_PER_QUESTION
+from .constants import ANSWERS_PER_QUESTION, QUESTIONS_PER_CONTEXT
+from .models import (
+    LEVEL_FULL_DESCRIPTIONS,
+    LEVEL_SHORT_DESCRIPTIONS,
+    Answer,
+    Context,
+    Language,
+    Level,
+    Question,
+    Subtopic,
+    Topic,
+)
 
 
 class AnswerInlineFormSet(forms.BaseInlineFormSet):
     """
-    Сұрақтың жауап нұсқаларын тексереді:
+    Сұрақтың жауап нұсқаларын тексереді (admin үшін):
     дәл 4 нұсқа және олардың дәл біреуі дұрыс.
     """
 
@@ -32,3 +46,327 @@ class AnswerInlineFormSet(forms.BaseInlineFormSet):
             )
         if correct_count != 1:
             raise forms.ValidationError(_("Дәл бір дұрыс жауап белгіленуі керек."))
+
+
+# ---------- Ортақ өрістер мен виджеттер ----------
+
+
+def add_bootstrap_classes(form):
+    """Өрістерге Bootstrap 5 класстарын қосады (шаблон қарапайым болуы үшін)."""
+    for field in form.fields.values():
+        widget = field.widget
+        if isinstance(widget, (forms.RadioSelect, forms.CheckboxInput)):
+            css_class = "form-check-input"
+        elif isinstance(widget, forms.Select):
+            css_class = "form-select"
+        else:
+            css_class = "form-control"
+        widget.attrs["class"] = f"{widget.attrs.get('class', '')} {css_class}".strip()
+
+
+class CodeField(forms.CharField):
+    """
+    Код жазылатын өріс: шегіністер мен бос орындар өзгертілмейді.
+    Тек браузер жіберетін жол соңы (\\r\\n) қарапайым \\n-ге ауыстырылады.
+    """
+
+    def __init__(self, rows=6, **kwargs):
+        kwargs.setdefault("strip", False)
+        kwargs.setdefault(
+            "widget",
+            forms.Textarea(
+                attrs={"rows": rows, "class": "font-monospace", "spellcheck": "false"}
+            ),
+        )
+        super().__init__(**kwargs)
+
+    def to_python(self, value):
+        value = super().to_python(value)
+        value = value.replace("\r\n", "\n")
+        # Тек бос орындардан тұрса — өріс бос деп саналады
+        if not value.strip():
+            return ""
+        return value
+
+
+class SubtopicSelect(forms.Select):
+    """
+    Тақырыпшалар тізімі: әр <option>-ға оның тақырыбы жазылады (data-topic).
+    static/js/subtopic_filter.js сол бойынша тек таңдалған тақырыптың тақырыпшаларын қалдырады.
+    """
+
+    def create_option(self, name, value, label, selected, index, subindex=None, attrs=None):
+        option = super().create_option(name, value, label, selected, index, subindex, attrs)
+        # Бос жолдан ("---------") басқасының мәнінде тақырыпша объектісі бар
+        if value:
+            option["attrs"]["data-topic"] = value.instance.topic_id
+        return option
+
+
+class LevelRadioSelect(forms.RadioSelect):
+    """Деңгей радио-батырмалары: толық сипаттамасы подсказка (title) болып шығады."""
+
+    def create_option(self, name, value, label, selected, index, subindex=None, attrs=None):
+        option = super().create_option(name, value, label, selected, index, subindex, attrs)
+        option["attrs"]["title"] = LEVEL_FULL_DESCRIPTIONS.get(value, "")
+        return option
+
+
+# ---------- Сұрақ енгізу формасы ----------
+
+# «Сақтап, келесісін қосу» және контекст бетіндегі «Сұрақ қосу» жіберетін URL параметрлері
+STICKY_FIELDS = ["topic", "subtopic", "level", "language", "context"]
+
+
+def initial_from_query(query):
+    """URL параметрлерінен (?topic=2&subtopic=3...) жаңа сұрақ формасының бастапқы мәндері."""
+    return {name: query[name] for name in STICKY_FIELDS if query.get(name)}
+
+
+class QuestionForm(forms.ModelForm):
+    """
+    Оқытушының сұрақ енгізу формасы.
+    Өрістер реті: тақырып → тақырыпша → деңгей → тіл → контекст → мәтін, код, сурет.
+    Жауап нұсқалары бөлек — AnswerFormSet.
+    """
+
+    # Тақырып сұраққа сақталмайды: ол тек тақырыпшаларды сүзу үшін керек
+    topic = forms.ModelChoiceField(label=_("Тақырып"), queryset=Topic.objects.all())
+    subtopic = forms.ModelChoiceField(
+        label=_("Тақырыпша"),
+        queryset=Subtopic.objects.all(),
+        widget=SubtopicSelect,
+    )
+    level = forms.ChoiceField(
+        label=_("Деңгей"),
+        choices=[(value, LEVEL_SHORT_DESCRIPTIONS[value]) for value in Level.values],
+        widget=LevelRadioSelect,
+    )
+    language = forms.ChoiceField(
+        label=_("Тіл"), choices=Language.choices, widget=forms.RadioSelect
+    )
+    context = forms.ModelChoiceField(
+        label=_("Контекст"),
+        queryset=Context.objects.none(),
+        required=False,
+        empty_label=_("Жоқ (жеке сұрақ)"),
+    )
+    text = forms.CharField(label=_("Сұрақ мәтіні"), widget=forms.Textarea(attrs={"rows": 4}))
+    code = CodeField(label=_("Код"), required=False)
+
+    field_order = ["topic", "subtopic", "level", "language", "context", "text", "code", "image"]
+
+    class Meta:
+        model = Question
+        fields = ["subtopic", "level", "language", "context", "text", "code", "image"]
+        labels = {"image": _("Сурет")}
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Тізімде белсенді контексттер (өңделіп жатқан сұрақтың контексті — белсенді болмаса да)
+        self.fields["context"].queryset = Context.objects.filter(
+            Q(is_active=True) | Q(pk=self.instance.context_id)
+        )
+        if self.instance.pk:
+            self.initial["topic"] = self.instance.subtopic.topic_id
+        add_bootstrap_classes(self)
+
+    def clean(self):
+        cleaned_data = super().clean()
+
+        # Тақырыпша таңдалған тақырыпқа жатуы керек (JS сүзгісіне сенбейміз)
+        topic = cleaned_data.get("topic")
+        subtopic = cleaned_data.get("subtopic")
+        if topic and subtopic and subtopic.topic_id != topic.pk:
+            self.add_error("subtopic", _("Бұл тақырыпша таңдалған тақырыпқа жатпайды."))
+
+        # Контекстте 5-тен көп белсенді сұрақ болмайды
+        context = cleaned_data.get("context")
+        if context and self.instance.is_active:
+            others = context.questions.filter(is_active=True).exclude(pk=self.instance.pk)
+            if others.count() >= QUESTIONS_PER_CONTEXT:
+                self.add_error(
+                    "context",
+                    _("Бұл контекстте %(count)s сұрақ бар, жаңасын қосуға болмайды.")
+                    % {"count": QUESTIONS_PER_CONTEXT},
+                )
+        # Контекст пен сұрақ тілінің сәйкестігін модельдің clean() әдісі тексереді
+        return cleaned_data
+
+    def next_question_query(self):
+        """
+        «Сақтап, келесісін қосу»: тақырып, тақырыпша, деңгей мен тіл келесі сұраққа
+        сақталады (контекст те — онда әлі орын болса). Сақталғаннан кейін шақырылады.
+        """
+        question = self.instance
+        params = {
+            "topic": question.subtopic.topic_id,
+            "subtopic": question.subtopic_id,
+            "level": question.level,
+            "language": question.language,
+        }
+        if (
+            question.context_id
+            and question.context.active_questions_count() < QUESTIONS_PER_CONTEXT
+        ):
+            params["context"] = question.context_id
+        return urlencode(params)
+
+
+class AnswerForm(forms.ModelForm):
+    """Бір жауап нұсқасы; мәтінге код жазуға болады (шегіністер сақталады)."""
+
+    text = CodeField(label=_("Жауап нұсқасы"), rows=2)
+
+    class Meta:
+        model = Answer
+        fields = ["text"]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        add_bootstrap_classes(self)
+
+
+class QuestionAnswersFormSet(forms.BaseInlineFormSet):
+    """
+    Сұрақ формасындағы 4 жауап нұсқасы. Дұрыс жауап бір радио-батырмамен
+    белгіленеді: атауы `answers-correct`, мәні — нұсқаның реті (0–3).
+    """
+
+    @property
+    def correct_name(self):
+        return f"{self.prefix}-correct"
+
+    def correct_value(self):
+        """Қай нұсқа дұрыс деп белгіленген ("0"–"3", белгісіз болса "") — шаблон үшін."""
+        if self.is_bound:
+            return self.data.get(self.correct_name, "")
+        for index, form in enumerate(self.forms):
+            if form.instance.pk and form.instance.is_correct:
+                return str(index)
+        return ""
+
+    def clean(self):
+        super().clean()
+        allowed_values = [str(index) for index in range(len(self.forms))]
+        value = self.data.get(self.correct_name)
+        if value not in allowed_values:
+            raise forms.ValidationError(_("Дұрыс жауапты белгілеңіз."))
+        self.correct_index = int(value)
+
+    def save(self, commit=True):
+        # Мәтіні өзгермеген нұсқаның да «дұрыс» белгісі өзгеруі мүмкін — бәрін сақтаймыз
+        answers = []
+        for index, form in enumerate(self.forms):
+            answer = form.save(commit=False)
+            answer.question = self.instance
+            answer.is_correct = index == self.correct_index
+            answer.save()
+            answers.append(answer)
+        return answers
+
+
+# Әр сұрақта дәл 4 нұсқа: бәрі міндетті, артық жол қосылмайды
+AnswerFormSet = forms.inlineformset_factory(
+    Question,
+    Answer,
+    form=AnswerForm,
+    formset=QuestionAnswersFormSet,
+    extra=0,
+    min_num=ANSWERS_PER_QUESTION,
+    max_num=ANSWERS_PER_QUESTION,
+    validate_min=True,
+    validate_max=True,
+    can_delete=False,
+)
+
+
+# ---------- Контекст формасы ----------
+
+
+class ContextForm(forms.ModelForm):
+    """Контекст (мәтін, кесте, график, сурет) — оған кейін 5 сұрақ байланады."""
+
+    language = forms.ChoiceField(
+        label=_("Тіл"), choices=Language.choices, widget=forms.RadioSelect
+    )
+    text = forms.CharField(label=_("Мәтіні"), widget=forms.Textarea(attrs={"rows": 8}))
+    code = CodeField(label=_("Код"), required=False)
+
+    class Meta:
+        model = Context
+        fields = ["title", "language", "text", "code", "image", "is_active"]
+        labels = {
+            "title": _("Атауы"),
+            "image": _("Сурет"),
+            "is_active": _("Белсенді"),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        add_bootstrap_classes(self)
+
+    def clean_language(self):
+        language = self.cleaned_data["language"]
+        # Сұрақтары бар контексттің тілін өзгертсе, сұрақтармен тілі сәйкес келмей қалады
+        if self.instance.pk and self.instance.questions.exclude(language=language).exists():
+            raise forms.ValidationError(
+                _("Бұл контекстке басқа тілдегі сұрақтар байланған, тілін өзгертуге болмайды.")
+            )
+        return language
+
+
+# ---------- Сұрақтар тізімінің сүзгісі ----------
+
+
+class QuestionFilterForm(forms.Form):
+    """Сұрақтар тізімінің сүзгісі (GET): тақырып, тақырыпша, деңгей, тіл, мәтіннен іздеу."""
+
+    topic = forms.ModelChoiceField(
+        label=_("Тақырып"),
+        queryset=Topic.objects.all(),
+        required=False,
+        empty_label=_("Барлық тақырып"),
+    )
+    subtopic = forms.ModelChoiceField(
+        label=_("Тақырыпша"),
+        queryset=Subtopic.objects.all(),
+        required=False,
+        empty_label=_("Барлық тақырыпша"),
+        widget=SubtopicSelect,
+    )
+    level = forms.ChoiceField(
+        label=_("Деңгей"),
+        choices=[("", _("Барлық деңгей"))] + Level.choices,
+        required=False,
+    )
+    language = forms.ChoiceField(
+        label=_("Тіл"),
+        choices=[("", _("Барлық тіл"))] + Language.choices,
+        required=False,
+    )
+    q = forms.CharField(label=_("Іздеу"), required=False)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        add_bootstrap_classes(self)
+        self.fields["q"].widget.attrs["placeholder"] = _("Мәтін немесе код")
+
+    def filter(self, questions):
+        """Сүзгіні сұрақтар тізіміне қолданады (сүзгі қате болса — тізім өзгермейді)."""
+        if not self.is_valid():
+            return questions
+        data = self.cleaned_data
+        if data["topic"]:
+            questions = questions.filter(subtopic__topic=data["topic"])
+        if data["subtopic"]:
+            questions = questions.filter(subtopic=data["subtopic"])
+        if data["level"]:
+            questions = questions.filter(level=data["level"])
+        if data["language"]:
+            questions = questions.filter(language=data["language"])
+        if data["q"]:
+            questions = questions.filter(
+                Q(text__icontains=data["q"]) | Q(code__icontains=data["q"])
+            )
+        return questions

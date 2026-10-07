@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% load i18n %}
+
+{% block title %}{% translate "Контексттер" %}{% endblock %}
+
+{% block content %}
+{% include "teacher/_nav.html" with active="contexts" %}
+
+<div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+    <h1 class="h4 mb-0 me-auto">{% translate "Контексттер" %}</h1>
+    <a class="btn btn-primary" href="{% url 'quiz:teacher_context_create' %}">{% translate "Жаңа контекст" %}</a>
+</div>
+
+<div class="table-responsive bg-white rounded shadow-sm">
+    <table class="table table-hover align-middle mb-0">
+        <thead>
+            <tr>
+                <th>№</th>
+                <th>{% translate "Атауы" %}</th>
+                <th>{% translate "Тіл" %}</th>
+                <th>{% translate "Сұрақтар" %}</th>
+                <th class="text-end">{% translate "Әрекеттер" %}</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for quiz_context in contexts %}
+                <tr{% if not quiz_context.is_active %} class="text-muted"{% endif %}>
+                    <td>{{ quiz_context.pk }}</td>
+                    <td>
+                        {{ quiz_context.title }}
+                        {% if quiz_context.is_demo %}<span class="badge text-bg-warning">{% translate "демо" %}</span>{% endif %}
+                        {% if not quiz_context.is_active %}<span class="badge text-bg-secondary">{% translate "белсенді емес" %}</span>{% endif %}
+                    </td>
+                    <td>{{ quiz_context.language }}</td>
+                    <td>
+                        <span class="badge {% if quiz_context.active_count == questions_per_context %}text-bg-success{% else %}text-bg-danger{% endif %}">
+                            {{ quiz_context.active_count }} / {{ questions_per_context }}
+                        </span>
+                    </td>
+                    <td class="text-end">
+                        <a class="btn btn-sm btn-outline-primary" href="{% url 'quiz:teacher_context_edit' quiz_context.pk %}">{% translate "Ашу" %}</a>
+                    </td>
+                </tr>
+            {% empty %}
+                <tr><td colspan="5" class="text-center text-muted py-4">{% translate "Әзірге контекст жоқ." %}</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

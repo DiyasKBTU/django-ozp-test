@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% load i18n %}
+
+{% block title %}{% translate "Банк толуы" %}{% endblock %}
+
+{% block content %}
+{% include "teacher/_nav.html" with active="bank" %}
+
+<h1 class="h4 mb-2">{% translate "Банк толуы" %}</h1>
+<p class="text-muted small mb-3">
+    {% blocktranslate with min=coverage.min_questions %}Белсенді жеке сұрақтар саны (контекстік сұрақтар бөлек саналады). Қызыл: деңгейде сұрақ жоқ немесе тақырыпшада {{ min }}-дан аз сұрақ.{% endblocktranslate %}
+</p>
+
+<div class="table-responsive bg-white rounded shadow-sm mb-4">
+    <table class="table table-sm table-bordered align-middle text-center mb-0 bank-table">
+        <thead>
+            <tr>
+                <th rowspan="2" class="text-start align-middle">{% translate "Тақырыпша" %}</th>
+                {% for code, label in coverage.languages %}
+                    <th colspan="4">{{ label }}</th>
+                {% endfor %}
+            </tr>
+            <tr>
+                {% for code, label in coverage.languages %}
+                    {% for level in coverage.levels %}<th>{{ level }}</th>{% endfor %}
+                    <th>Σ</th>
+                {% endfor %}
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in coverage.rows %}
+                <tr>
+                    <td class="text-start" title="{{ row.subtopic.topic }}">{{ row.subtopic }}</td>
+                    {% for cell in row.cells %}
+                        <td class="{% if cell.missing %}missing{% endif %}{% if cell.is_total %} fw-semibold{% endif %}">{{ cell.count }}</td>
+                    {% endfor %}
+                </tr>
+            {% endfor %}
+        </tbody>
+        <tfoot>
+            <tr class="table-light">
+                <th class="text-start">
+                    {% translate "Барлығы" %}
+                    <div class="small fw-normal text-muted">
+                        {% blocktranslate with a=coverage.level_quota.A b=coverage.level_quota.B c=coverage.level_quota.C %}кемінде: A {{ a }}, B {{ b }}, C {{ c }}{% endblocktranslate %}
+                    </div>
+                </th>
+                {% for cell in coverage.totals %}
+                    <td class="{% if cell.missing %}missing{% endif %} fw-semibold">{{ cell.count }}</td>
+                {% endfor %}
+            </tr>
+        </tfoot>
+    </table>
+</div>
+
+<h2 class="h5">{% translate "Контексттер" %}</h2>
+<p class="text-muted small mb-2">
+    {% blocktranslate with count=coverage.questions_per_context min=coverage.min_contexts %}Тестке {{ count }} белсенді сұрағы бар контекст қана жарайды; әр тілде кемінде {{ min }} контекст керек.{% endblocktranslate %}
+</p>
+<div class="table-responsive bg-white rounded shadow-sm" style="max-width: 32rem">
+    <table class="table table-sm table-bordered align-middle text-center mb-0 bank-table">
+        <thead>
+            <tr>
+                {% for item in coverage.contexts %}<th>{{ item.label }}</th>{% endfor %}
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                {% for item in coverage.contexts %}
+                    <td class="{% if item.missing %}missing{% endif %}">{{ item.count }} / {{ coverage.min_contexts }}</td>
+                {% endfor %}
+            </tr>
+        </tbody>
+    </table>
+</div>
+{% endblock %}

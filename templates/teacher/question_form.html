@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% load i18n static %}
+
+{% block title %}{% if question %}{% translate "Сұрақты өңдеу" %}{% else %}{% translate "Жаңа сұрақ" %}{% endif %}{% endblock %}
+
+{% block content %}
+{% include "teacher/_nav.html" with active="questions" %}
+
+<div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+    <h1 class="h4 mb-0 me-auto">
+        {% if question %}{% blocktranslate with id=question.pk %}Сұрақ №{{ id }}{% endblocktranslate %}{% else %}{% translate "Жаңа сұрақ" %}{% endif %}
+    </h1>
+    {% if question %}
+        {% if not preview.is_active %}<span class="badge text-bg-secondary">{% translate "белсенді емес" %}</span>{% endif %}
+        {% if preview.is_demo %}<span class="badge text-bg-warning">{% translate "демо" %}</span>{% endif %}
+        <a class="btn btn-sm btn-outline-primary" href="{% url 'quiz:teacher_question_create' %}">{% translate "Жаңа сұрақ" %}</a>
+    {% endif %}
+    <a class="btn btn-sm btn-outline-secondary" href="{% url 'quiz:teacher_questions' %}">{% translate "Тізімге оралу" %}</a>
+</div>
+
+<div class="row g-4">
+    <div class="{% if preview %}col-lg-7{% else %}col-lg-9{% endif %}">
+        <form method="post" enctype="multipart/form-data" class="bg-white rounded shadow-sm p-3 p-md-4" novalidate>
+            {% csrf_token %}
+            {% for error in form.non_field_errors %}<div class="alert alert-danger">{{ error }}</div>{% endfor %}
+
+            <div class="row">
+                <div class="col-md-6">{% include "teacher/_field.html" with field=form.topic %}</div>
+                <div class="col-md-6">{% include "teacher/_field.html" with field=form.subtopic %}</div>
+            </div>
+            {% include "teacher/_radio_field.html" with field=form.level %}
+            {% include "teacher/_radio_field.html" with field=form.language inline=True %}
+            {% include "teacher/_field.html" with field=form.context %}
+            {% include "teacher/_field.html" with field=form.text %}
+            {% include "teacher/_field.html" with field=form.code %}
+            {% include "teacher/_field.html" with field=form.image %}
+
+            {# 4 жауап нұсқасы; дұрысы бір радио-батырмамен белгіленеді #}
+            <div class="mb-3">
+                <div class="form-label fw-semibold">
+                    {% translate "Жауап нұсқалары" %} <span class="text-danger">*</span>
+                    <span class="fw-normal text-muted small">— {% translate "дұрысын радио-батырмамен белгілеңіз" %}</span>
+                </div>
+                {{ formset.management_form }}
+                {% for error in formset.non_form_errors %}<div class="alert alert-danger py-2">{{ error }}</div>{% endfor %}
+                {% with correct_value=formset.correct_value %}
+                    {% for answer_form in formset %}
+                        {% for hidden in answer_form.hidden_fields %}{{ hidden }}{% endfor %}
+                        <div class="d-flex gap-2 align-items-start mb-2">
+                            <div class="form-check pt-2" style="min-width: 3rem">
+                                <input class="form-check-input" type="radio" name="{{ formset.correct_name }}"
+                                       id="correct-{{ forloop.counter0 }}" value="{{ forloop.counter0 }}"
+                                       {% if correct_value == forloop.counter0|stringformat:"d" %}checked{% endif %}>
+                                <label class="form-check-label fw-semibold" for="correct-{{ forloop.counter0 }}">{% cycle "A" "B" "C" "D" %}</label>
+                            </div>
+                            <div class="flex-grow-1">
+                                {{ answer_form.text }}
+                                {% for error in answer_form.text.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}
+                            </div>
+                        </div>
+                    {% endfor %}
+                {% endwith %}
+            </div>
+
+            <div class="d-flex flex-wrap gap-2">
+                <button type="submit" name="save" class="btn btn-primary">{% translate "Сақтау" %}</button>
+                <button type="submit" name="save_and_next" class="btn btn-outline-primary">{% translate "Сақтап, келесісін қосу" %}</button>
+            </div>
+        </form>
+    </div>
+
+    {% if preview %}
+        <div class="col-lg-5">
+            <div class="bg-white rounded shadow-sm p-3 p-md-4">
+                <h2 class="h6 text-muted mb-3">{% translate "Алдын ала қарау (студент осылай көреді)" %}</h2>
+                {% include "quiz/_question_body.html" with question=preview answers=preview.answers.all show_correct=True %}
+                <div class="small text-muted mt-3">
+                    {{ preview.subtopic }} · {{ preview.get_level_display }} · {{ preview.get_language_display }}
+                </div>
+            </div>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{% static 'js/subtopic_filter.js' %}"></script>
+{% endblock %}

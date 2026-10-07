@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% load i18n %}
+
+{% block title %}{% if quiz_context %}{% translate "Контекст" %}{% else %}{% translate "Жаңа контекст" %}{% endif %}{% endblock %}
+
+{% block content %}
+{% include "teacher/_nav.html" with active="contexts" %}
+
+<div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+    <h1 class="h4 mb-0 me-auto">
+        {% if quiz_context %}{% blocktranslate with id=quiz_context.pk %}Контекст №{{ id }}{% endblocktranslate %}{% else %}{% translate "Жаңа контекст" %}{% endif %}
+    </h1>
+    <a class="btn btn-sm btn-outline-secondary" href="{% url 'quiz:teacher_contexts' %}">{% translate "Тізімге оралу" %}</a>
+</div>
+
+<div class="row g-4">
+    <div class="col-lg-7">
+        <form method="post" enctype="multipart/form-data" class="bg-white rounded shadow-sm p-3 p-md-4" novalidate>
+            {% csrf_token %}
+            {% for error in form.non_field_errors %}<div class="alert alert-danger">{{ error }}</div>{% endfor %}
+            {% include "teacher/_field.html" with field=form.title %}
+            {% include "teacher/_radio_field.html" with field=form.language inline=True %}
+            {% include "teacher/_field.html" with field=form.text %}
+            {% include "teacher/_field.html" with field=form.code %}
+            {% include "teacher/_field.html" with field=form.image %}
+            <div class="form-check mb-3">
+                {{ form.is_active }}
+                <label class="form-check-label" for="{{ form.is_active.id_for_label }}">{{ form.is_active.label }}</label>
+            </div>
+            <button type="submit" class="btn btn-primary">{% translate "Сақтау" %}</button>
+        </form>
+    </div>
+
+    {% if quiz_context %}
+        <div class="col-lg-5">
+            <div class="bg-white rounded shadow-sm p-3 p-md-4">
+                <div class="d-flex align-items-center gap-2 mb-3">
+                    <h2 class="h6 mb-0 me-auto">
+                        {% translate "Байланған сұрақтар" %}
+                        <span class="badge {% if active_count == questions_per_context %}text-bg-success{% else %}text-bg-danger{% endif %}">{{ active_count }} / {{ questions_per_context }}</span>
+                    </h2>
+                    {% if quiz_context.is_active and active_count < questions_per_context %}
+                        <a class="btn btn-sm btn-primary"
+                           href="{% url 'quiz:teacher_question_create' %}?context={{ quiz_context.pk }}&amp;language={{ quiz_context.language }}">{% translate "Сұрақ қосу" %}</a>
+                    {% else %}
+                        <button type="button" class="btn btn-sm btn-primary" disabled>{% translate "Сұрақ қосу" %}</button>
+                    {% endif %}
+                </div>
+                <ul class="list-group">
+                    {% for question in questions %}
+                        <li class="list-group-item d-flex gap-2 align-items-start{% if not question.is_active %} text-muted{% endif %}">
+                            <span class="badge text-bg-light border">{{ question.subtopic.number|stringformat:"02d" }} · {{ question.level }}</span>
+                            <span class="flex-grow-1">
+                                {{ question.text|truncatechars:80 }}
+                                {% if not question.is_active %}<span class="badge text-bg-secondary">{% translate "белсенді емес" %}</span>{% endif %}
+                            </span>
+                            <a class="btn btn-sm btn-outline-primary" href="{% url 'quiz:teacher_question_edit' question.pk %}">{% translate "Өңдеу" %}</a>
+                        </li>
+                    {% empty %}
+                        <li class="list-group-item text-muted">{% translate "Әзірге сұрақ жоқ." %}</li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}

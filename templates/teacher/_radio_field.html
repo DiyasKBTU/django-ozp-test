@@ -1,0 +1,13 @@
+{# Радио-батырмалар тобы; inline=True — бір қатарда. Подсказка (title) виджеттен алынады #}
+<div class="mb-3">
+    <div class="form-label fw-semibold">
+        {{ field.label }}{% if field.field.required %} <span class="text-danger">*</span>{% endif %}
+    </div>
+    {% for radio in field %}
+        <div class="form-check{% if inline %} form-check-inline{% endif %}"{% if radio.data.attrs.title %} title="{{ radio.data.attrs.title }}"{% endif %}>
+            {{ radio.tag }}
+            <label class="form-check-label" for="{{ radio.id_for_label }}">{{ radio.choice_label }}</label>
+        </div>
+    {% endfor %}
+    {% for error in field.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}
+</div>

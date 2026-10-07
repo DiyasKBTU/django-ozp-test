@@ -26,6 +26,8 @@ copy .env.example .env
 
 Сайт: http://127.0.0.1:8000/ , басқару панелі: http://127.0.0.1:8000/admin/
 
+Оқытушы беттері (`is_staff` қолданушыға): сұрақтар — http://127.0.0.1:8000/teacher/questions/ , контексттер — `/teacher/contexts/`, банк толуы — `/teacher/bank/`.
+
 Linux/macOS-та `.venv\Scripts\python` орнына `.venv/bin/python` жазыңыз.
 
 ## Демо сұрақтар
