@@ -1,4 +1,5 @@
 import random
+import re
 from collections import Counter
 from datetime import timedelta
 from io import StringIO
@@ -1895,3 +1896,167 @@ class TeacherResultsTests(TestCase):
     def test_teacher_navigation_has_results_link(self):
         response = self.client.get(reverse("quiz:teacher_questions"))
         self.assertContains(response, reverse("quiz:teacher_results"))
+
+
+# ---------- 7-кезең: барлық беттің орысша аудармасы ----------
+
+# Тек қазақ әліпбиінде бар әріптер: орысша бетте болмауы керек
+KAZAKH_ONLY_LETTERS = re.compile(r"[әғқңөұүһіӘҒҚҢӨҰҮҺІ]")
+
+
+def visible_text(response):
+    """Беттің мәтіні: <style>, <script> және HTML түсініктемелерінсіз."""
+    html = response.content.decode()
+    html = re.sub(r"<(style|script)\b.*?</\1>", "", html, flags=re.S)
+    return re.sub(r"<!--.*?-->", "", html, flags=re.S)
+
+
+class FullTranslationTests(VariantTestCase):
+    """
+    Барлық бет орысша ашылғанда қазақша мәтін қалмауы керек (аударылмаған
+    жол табылса, тест оның айналасын көрсетеді). Деректер орысша/латынша.
+    """
+
+    def setUp(self):
+        # Беттерде қазақша сұрақ/контекст мазмұны шықпауы үшін — тек орысша банк
+        Question.objects.filter(language="kk").delete()
+        Context.objects.filter(language="kk").delete()
+
+        self.group = StudyGroup.objects.create(name="INF-21")
+        self.student = User.objects.create_user(
+            username="student", password="pass12345", first_name="Ivan", last_name="Petrov"
+        )
+        self.student.profile.group = self.group
+        self.student.profile.save()
+        self.teacher = User.objects.create_user(
+            username="teacher", password="pass12345", is_staff=True
+        )
+        self.session = make_session(title="Test session")
+        self.attempt = create_attempt(self.student, self.session, "ru")
+        self.client.cookies["django_language"] = "ru"
+
+    def assert_russian(self, response, name):
+        self.assertIn(response.status_code, [200])
+        text = visible_text(response)
+        found = [
+            text[max(0, match.start() - 60) : match.end() + 60]
+            for match in KAZAKH_ONLY_LETTERS.finditer(text)
+        ]
+        self.assertEqual(found, [], f"{name}: аударылмаған мәтін")
+
+    def check_pages(self, pages):
+        for name, (method, url, data) in pages.items():
+            with self.subTest(page=name):
+                if method == "post":
+                    response = self.client.post(url, data)
+                else:
+                    response = self.client.get(url, data)
+                self.assert_russian(response, name)
+
+    def test_guest_pages(self):
+        self.check_pages(
+            {
+                "home": ("get", reverse("quiz:home"), {}),
+                "login": ("get", reverse("accounts:login"), {}),
+                "login error": (
+                    "post",
+                    reverse("accounts:login"),
+                    {"username": "student", "password": "wrong"},
+                ),
+                "register": ("get", reverse("accounts:register"), {}),
+                "register errors": (
+                    "post",
+                    reverse("accounts:register"),
+                    {"username": "student", "password1": "123", "password2": "456"},
+                ),
+            }
+        )
+
+    def test_student_pages(self):
+        self.client.force_login(self.student)
+        other_session = make_session(title="Second session")
+        attempt_url = reverse("quiz:attempt_question", args=[self.attempt.pk, 1])
+        self.check_pages(
+            {
+                "dashboard": ("get", reverse("quiz:dashboard"), {}),
+                "start": ("get", reverse("quiz:session_start", args=[other_session.pk]), {}),
+                "question": ("get", attempt_url, {}),
+                "context question": (
+                    "get",
+                    reverse("quiz:attempt_question", args=[self.attempt.pk, 45]),
+                    {},
+                ),
+                "finish": ("get", reverse("quiz:attempt_finish", args=[self.attempt.pk]), {}),
+            }
+        )
+        # Қате жауап жіберілгендегі хабарлама
+        response = self.client.post(attempt_url, {"answer": "abc"}, follow=True)
+        self.assert_russian(response, "answer error")
+
+        finish_attempt(self.attempt)
+        result_url = reverse("quiz:attempt_result", args=[self.attempt.pk])
+        self.assert_russian(self.client.get(result_url), "result")
+        self.session.show_answers = ExamSession.ShowAnswers.AFTER_CLOSE
+        self.session.save()
+        self.assert_russian(self.client.get(result_url), "result without answers")
+
+    def test_teacher_pages(self):
+        self.client.force_login(self.teacher)
+        question = Question.objects.filter(context__isnull=True).first()
+        quiz_context = Context.objects.first()
+        self.check_pages(
+            {
+                "questions": ("get", reverse("quiz:teacher_questions"), {}),
+                "question new": ("get", reverse("quiz:teacher_question_create"), {}),
+                "question errors": ("post", reverse("quiz:teacher_question_create"), {}),
+                "question edit": (
+                    "get",
+                    reverse("quiz:teacher_question_edit", args=[question.pk]),
+                    {},
+                ),
+                "contexts": ("get", reverse("quiz:teacher_contexts"), {}),
+                "context new": ("get", reverse("quiz:teacher_context_create"), {}),
+                "context errors": ("post", reverse("quiz:teacher_context_create"), {}),
+                "context edit": (
+                    "get",
+                    reverse("quiz:teacher_context_edit", args=[quiz_context.pk]),
+                    {},
+                ),
+                "bank": ("get", reverse("quiz:teacher_bank"), {}),
+                "bank sample": ("get", reverse("quiz:teacher_bank_sample"), {"lang": "ru"}),
+                "results": ("get", reverse("quiz:teacher_results"), {}),
+                "attempt result": (
+                    "get",
+                    reverse("quiz:attempt_result", args=[self.attempt.pk]),
+                    {},
+                ),
+            }
+        )
+
+    def test_check_finds_kazakh_text(self):
+        """Тексерудің өзі жұмыс істейді: қазақша бетте қазақ әріптері табылады."""
+        self.client.cookies["django_language"] = "kk"
+        self.client.force_login(self.student)
+        response = self.client.get(reverse("quiz:dashboard"))
+        self.assertRegex(visible_text(response), KAZAKH_ONLY_LETTERS)
+
+    def test_kazakh_form_errors_are_not_in_english(self):
+        """Django-ның дайын қате хабарлары қазақша бетте ағылшынша шықпауы керек."""
+        self.client.cookies["django_language"] = "kk"
+        english = ["This field", "Select a valid", "Enter a valid", "Ensure this", "password"]
+        responses = {
+            "register": self.client.post(
+                reverse("accounts:register"),
+                {"username": "student", "password1": "123", "password2": "123"},
+            ),
+        }
+        self.client.force_login(self.teacher)
+        responses["question"] = self.client.post(
+            reverse("quiz:teacher_question_create"), {"subtopic": "999", "level": "X"}
+        )
+        responses["context"] = self.client.post(reverse("quiz:teacher_context_create"), {})
+        for name, response in responses.items():
+            text = re.sub(r"<[^>]+>", " ", visible_text(response))
+            for phrase in english:
+                with self.subTest(page=name, phrase=phrase):
+                    self.assertNotIn(phrase, text)
