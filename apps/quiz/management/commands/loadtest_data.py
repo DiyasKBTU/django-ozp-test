@@ -25,7 +25,8 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.accounts.models import Profile, StudyGroup
-from apps.quiz.models import Attempt, ExamSession
+from apps.quiz.constants import INFORMATICS_CODE
+from apps.quiz.models import Attempt, ExamSession, Subject
 
 GROUP_NAME = "LOADTEST"
 SESSION_TITLE = "Жүктеме тесті (loadtest)"
@@ -69,7 +70,13 @@ class Command(BaseCommand):
 
     @transaction.atomic
     def create_data(self, count, password, hours):
-        group, _created = StudyGroup.objects.get_or_create(name=GROUP_NAME)
+        # Жүктеме тесті — информатика бойынша (--subject 12-кезеңде қосылады)
+        subject = Subject.objects.filter(code=INFORMATICS_CODE).first()
+        if subject is None:
+            raise CommandError("Алдымен пәндерді жүктеңіз: python manage.py load_subjects")
+        group, _created = StudyGroup.objects.get_or_create(
+            name=GROUP_NAME, defaults={"subject": subject}
+        )
         names = usernames(count)
 
         # Бөтен аккаунтты (нақты студент не оқытушы) кездейсоқ өзгертпеу үшін
@@ -103,6 +110,7 @@ class Command(BaseCommand):
         session, _created = ExamSession.objects.update_or_create(
             title=SESSION_TITLE,
             defaults={
+                "subject": group.subject,
                 "opens_at": now - timedelta(minutes=1),
                 "closes_at": now + timedelta(hours=hours),
                 "show_answers": ExamSession.ShowAnswers.AFTER_FINISH,

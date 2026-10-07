@@ -4,9 +4,15 @@ from django.utils.translation import gettext_lazy as _
 
 
 class StudyGroup(models.Model):
-    """Студенттер тобы (мысалы, ИНФ-21)."""
+    """Студенттер тобы (мысалы, ИНФ-21); топ бір пәнге (мамандыққа) жатады."""
 
     name = models.CharField(_("атауы"), max_length=50, unique=True)
+    subject = models.ForeignKey(
+        "quiz.Subject",
+        on_delete=models.PROTECT,
+        related_name="groups",
+        verbose_name=_("пән"),
+    )
 
     class Meta:
         ordering = ["name"]
@@ -18,7 +24,7 @@ class StudyGroup(models.Model):
 
 
 class Profile(models.Model):
-    """Қолданушының қосымша деректері: қай топта оқиды."""
+    """Қолданушының қосымша деректері: студенттің тобы, оқытушының пәндері."""
 
     user = models.OneToOneField(
         settings.AUTH_USER_MODEL,
@@ -33,6 +39,13 @@ class Profile(models.Model):
         blank=True,
         related_name="profiles",
         verbose_name=_("топ"),
+    )
+    # Оқытушыға тағайындалған пәндер (студентте бос)
+    subjects = models.ManyToManyField(
+        "quiz.Subject",
+        blank=True,
+        related_name="teacher_profiles",
+        verbose_name=_("пәндер"),
     )
 
     class Meta:

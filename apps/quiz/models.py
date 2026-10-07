@@ -69,20 +69,59 @@ def localized_name(name_kk, name_ru):
     return name_kk
 
 
+# ---------- Пәндер ----------
+
+
+class Subject(models.Model):
+    """Пән (информатика, математика, ...), `load_subjects` арқылы жүктеледі."""
+
+    code = models.SlugField(_("коды"), max_length=50, unique=True)
+    name_kk = models.CharField(_("атауы (қаз)"), max_length=255)
+    name_ru = models.CharField(_("атауы (орыс)"), max_length=255)
+    # Тест уақыты (минут); сессияның жабылу уақытынан аспайды
+    duration_minutes = models.PositiveSmallIntegerField(_("тест уақыты (минут)"))
+    uses_formulas = models.BooleanField(_("формулалар қолданылады"), default=False)
+    order = models.PositiveSmallIntegerField(_("реті"), default=0)
+    is_active = models.BooleanField(_("белсенді"), default=True)
+
+    class Meta:
+        ordering = ["order", "id"]
+        verbose_name = _("пән")
+        verbose_name_plural = _("пәндер")
+
+    def __str__(self):
+        return self.name
+
+    @property
+    def name(self):
+        return localized_name(self.name_kk, self.name_ru)
+
+
 # ---------- Сұрақтар банкі ----------
 
 
 class Topic(models.Model):
-    """Тақырып (01–11), спецификациядан `load_topics` арқылы жүктеледі."""
+    """Тақырып; нөмірі пән ішінде бірегей. `load_subjects` арқылы жүктеледі."""
 
-    number = models.PositiveSmallIntegerField(_("нөмірі"), unique=True)
+    subject = models.ForeignKey(
+        Subject,
+        on_delete=models.PROTECT,
+        related_name="topics",
+        verbose_name=_("пән"),
+    )
+    number = models.PositiveSmallIntegerField(_("нөмірі"))
     name_kk = models.CharField(_("атауы (қаз)"), max_length=255)
     name_ru = models.CharField(_("атауы (орыс)"), max_length=255)
 
     class Meta:
-        ordering = ["number"]
+        ordering = ["subject__order", "number"]
         verbose_name = _("тақырып")
         verbose_name_plural = _("тақырыптар")
+        constraints = [
+            models.UniqueConstraint(
+                fields=["subject", "number"], name="unique_topic_number_in_subject"
+            ),
+        ]
 
     def __str__(self):
         return f"{self.number:02d} {self.name}"
@@ -93,7 +132,10 @@ class Topic(models.Model):
 
 
 class Subtopic(models.Model):
-    """Тақырыпша (01–20); нөмірі бүкіл тест бойынша бірегей."""
+    """
+    Тақырыпша (01–20); нөмірі пән ішінде бірегей (DB шектеуі жоқ,
+    `load_subjects` пен тесттер тексереді).
+    """
 
     topic = models.ForeignKey(
         Topic,
@@ -101,12 +143,14 @@ class Subtopic(models.Model):
         related_name="subtopics",
         verbose_name=_("тақырып"),
     )
-    number = models.PositiveSmallIntegerField(_("нөмірі"), unique=True)
+    number = models.PositiveSmallIntegerField(_("нөмірі"))
     name_kk = models.CharField(_("атауы (қаз)"), max_length=255)
     name_ru = models.CharField(_("атауы (орыс)"), max_length=255)
+    # Спецификациядағы толық мазмұны (сұрақ формасында подсказка)
+    description_kk = models.TextField(_("сипаттамасы (қаз)"), blank=True)
 
     class Meta:
-        ordering = ["number"]
+        ordering = ["topic__subject__order", "number"]
         verbose_name = _("тақырыпша")
         verbose_name_plural = _("тақырыпшалар")
 
@@ -121,6 +165,12 @@ class Subtopic(models.Model):
 class Context(models.Model):
     """Контекст (мәтін, кесте, график, сурет), оған 5 сұрақ байланады."""
 
+    subject = models.ForeignKey(
+        Subject,
+        on_delete=models.PROTECT,
+        related_name="contexts",
+        verbose_name=_("пән"),
+    )
     language = models.CharField(_("тілі"), max_length=2, choices=Language.choices)
     title = models.CharField(_("атауы"), max_length=255)
     text = models.TextField(_("мәтіні"))
@@ -144,7 +194,7 @@ class Context(models.Model):
 
 
 class Question(models.Model):
-    """Сұрақ. Тақырыбы `subtopic.topic` арқылы анықталады."""
+    """Сұрақ. Тақырыбы мен пәні `subtopic.topic.subject` арқылы анықталады."""
 
     subtopic = models.ForeignKey(
         Subtopic,
@@ -179,10 +229,17 @@ class Question(models.Model):
         return f"{self.subtopic.number:02d}/{self.level}/{self.language}: {short_text}"
 
     def clean(self):
+        if not self.context_id:
+            return
         # Контекстке байланған сұрақ контекстпен бір тілде болуы керек
-        if self.context_id and self.context.language != self.language:
+        if self.context.language != self.language:
             raise ValidationError(
                 {"context": _("Контекст пен сұрақтың тілі бірдей болуы керек.")}
+            )
+        # ... және бір пәнде
+        if self.subtopic_id and self.context.subject_id != self.subtopic.topic.subject_id:
+            raise ValidationError(
+                {"context": _("Контекст пен сұрақтың пәні бірдей болуы керек.")}
             )
 
 
@@ -219,9 +276,15 @@ class ExamSession(models.Model):
         AFTER_CLOSE = "after_close", _("Сессия жабылғаннан кейін")
 
     title = models.CharField(_("атауы"), max_length=255)
+    subject = models.ForeignKey(
+        Subject,
+        on_delete=models.PROTECT,
+        related_name="exam_sessions",
+        verbose_name=_("пән"),
+    )
     opens_at = models.DateTimeField(_("ашылу уақыты"))
     closes_at = models.DateTimeField(_("жабылу уақыты"))
-    # Бос болса — сессия барлық топқа арналған
+    # Бос болса — сессия осы пәннің барлық тобына арналған
     groups = models.ManyToManyField(
         StudyGroup,
         blank=True,
@@ -275,7 +338,8 @@ class Attempt(models.Model):
     )
     language = models.CharField(_("тест тілі"), max_length=2, choices=Language.choices)
     started_at = models.DateTimeField(_("басталған уақыты"), default=timezone.now)
-    # deadline = min(started_at + 125 минут, session.closes_at) — services.py есептейді
+    # deadline = min(started_at + session.subject.duration_minutes, session.closes_at)
+    # — services.py есептейді
     deadline = models.DateTimeField(_("мерзімі"))
     finished_at = models.DateTimeField(_("аяқталған уақыты"), null=True, blank=True)
     score = models.PositiveSmallIntegerField(_("балы"), null=True, blank=True)

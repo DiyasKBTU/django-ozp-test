@@ -6,7 +6,7 @@ from django.utils.translation import get_language
 from django.utils.translation import gettext as _
 from django.views.decorators.cache import never_cache
 
-from .constants import PRACTICE_QUESTIONS, QUESTIONS_TOTAL, TEST_DURATION_MINUTES
+from .constants import PRACTICE_QUESTIONS, QUESTIONS_TOTAL
 from .forms import AttemptAnswerForm, PracticeStartForm, StartAttemptForm
 from .models import Attempt, Language
 from .services import (
@@ -15,6 +15,7 @@ from .services import (
     can_see_answers,
     create_attempt,
     dashboard_sessions,
+    default_subject,
     finish_attempt,
     finish_expired_attempts,
     finish_if_expired,
@@ -34,9 +35,10 @@ from .services import (
 
 def home(request):
     """Басты бет: тест туралы қысқаша мәлімет."""
+    subject = default_subject()
     context = {
         "questions_total": QUESTIONS_TOTAL,
-        "duration_minutes": TEST_DURATION_MINUTES,
+        "duration_minutes": subject.duration_minutes if subject else None,
     }
     return render(request, "quiz/home.html", context)
 
@@ -83,7 +85,9 @@ def session_start(request, session_id):
     Студент бұл сессияда бұрын бастаса, жаңа әрекет жасалмайды — сол әрекетке қайтады.
     """
     # Бөтен топтың сессиясы — 404
-    session = get_object_or_404(visible_sessions(request.user), pk=session_id)
+    session = get_object_or_404(
+        visible_sessions(request.user).select_related("subject"), pk=session_id
+    )
 
     attempt = Attempt.objects.filter(user=request.user, session=session).first()
     if attempt:
@@ -103,7 +107,7 @@ def session_start(request, session_id):
         "is_open": is_session_open(session),
         "form": form,
         "questions_total": QUESTIONS_TOTAL,
-        "duration_minutes": TEST_DURATION_MINUTES,
+        "duration_minutes": session.subject.duration_minutes,
     }
     return render(request, "quiz/session_start.html", context)
 

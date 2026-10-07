@@ -3,15 +3,17 @@ import re
 from collections import Counter
 from datetime import timedelta
 from io import StringIO
+from unittest import mock
 
 from django.conf import settings
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
 from django.core.management import call_command
 from django.core.management.base import CommandError
-from django.db import IntegrityError
+from django.db import IntegrityError, connection
+from django.db.migrations.executor import MigrationExecutor
 from django.forms import inlineformset_factory
-from django.test import TestCase
+from django.test import TestCase, TransactionTestCase
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.html import escape
@@ -29,10 +31,11 @@ from .constants import (
     QUESTIONS_PER_CONTEXT,
     QUESTIONS_TOTAL,
     SINGLE_QUESTIONS_PER_SUBTOPIC,
+    INFORMATICS_CODE,
     SUBTOPICS_COUNT,
-    TEST_DURATION_MINUTES,
 )
-from .forms import AnswerInlineFormSet
+from .forms import AnswerInlineFormSet, ExamSessionAdminForm
+from .management.commands.load_subjects import read_subjects
 from .management.commands.loadtest_data import DEFAULT_PASSWORD as LOADTEST_PASSWORD
 from .management.commands.loadtest_data import SESSION_TITLE as LOADTEST_SESSION_TITLE
 from .management.commands.loadtest_data import usernames as loadtest_usernames
@@ -45,6 +48,7 @@ from .models import (
     Context,
     ExamSession,
     Question,
+    Subject,
     Subtopic,
     Topic,
 )
@@ -65,6 +69,15 @@ from .services import (
 )
 
 
+# Информатиканың тест уақыты (TZ.md, 10.1)
+INFORMATICS_MINUTES = 125
+
+
+def informatics():
+    """Деректер миграциясы жасаған «Информатика» пәні."""
+    return Subject.objects.get(code=INFORMATICS_CODE)
+
+
 def run_command(*args):
     """Команданы шығысын жасырып іске қосады."""
     call_command(*args, stdout=StringIO())
@@ -74,6 +87,7 @@ def make_session(**kwargs):
     now = timezone.now()
     data = {
         "title": "Сынақ сессия",
+        "subject": informatics(),
         "opens_at": now - timedelta(hours=1),
         "closes_at": now + timedelta(hours=3),
     }
@@ -212,7 +226,9 @@ class ModelTests(TestCase):
             session.full_clean()
 
     def test_context_question_language_must_match(self):
-        context = Context.objects.create(language="ru", title="Контекст", text="Мәтін")
+        context = Context.objects.create(
+            subject=informatics(), language="ru", title="Контекст", text="Мәтін"
+        )
         question = Question(
             subtopic=self.subtopic, context=context, language="kk", text="Сұрақ", level="B"
         )
@@ -356,7 +372,9 @@ class TeacherTestCase(TestCase):
         return question
 
     def create_context(self, language="kk"):
-        return Context.objects.create(language=language, title="Кесте", text="Мәтін")
+        return Context.objects.create(
+            subject=informatics(), language=language, title="Кесте", text="Мәтін"
+        )
 
 
 class TeacherAccessTests(TeacherTestCase):
@@ -751,8 +769,8 @@ class StudentTestCase(TestCase):
     """Екі топ және ИНФ-21 тобындағы кірген студент."""
 
     def setUp(self):
-        self.group = StudyGroup.objects.create(name="ИНФ-21")
-        self.other_group = StudyGroup.objects.create(name="ИНФ-22")
+        self.group = StudyGroup.objects.create(name="ИНФ-21", subject=informatics())
+        self.other_group = StudyGroup.objects.create(name="ИНФ-22", subject=informatics())
         self.student = User.objects.create_user(username="student", password="pass12345")
         self.student.profile.group = self.group
         self.student.profile.save()
@@ -1089,7 +1107,7 @@ class CreateAttemptTests(VariantTestCase):
     def test_deadline_is_125_minutes(self):
         attempt = create_attempt(self.student, self.session, "kk", now=self.now)
         self.assertEqual(attempt.started_at, self.now)
-        self.assertEqual(attempt.deadline, self.now + timedelta(minutes=TEST_DURATION_MINUTES))
+        self.assertEqual(attempt.deadline, self.now + timedelta(minutes=INFORMATICS_MINUTES))
 
     def test_deadline_does_not_exceed_session_close(self):
         self.session.closes_at = self.now + timedelta(minutes=30)
@@ -1334,7 +1352,7 @@ class StartTestPageTests(TakeTestCase):
         self.assertContains(response, 'id="id_language_0"')
         self.assertContains(response, 'id="id_language_1"')
         self.assertContains(response, f"Сұрақтар саны: {QUESTIONS_TOTAL}")
-        self.assertContains(response, f"{TEST_DURATION_MINUTES} минут")
+        self.assertContains(response, f"{INFORMATICS_MINUTES} минут")
         self.assertContains(response, timezone.localtime(self.session.closes_at).strftime("%d.%m.%Y, %H:%M"))
 
     def test_start_creates_attempt_in_chosen_language(self):
@@ -1409,7 +1427,7 @@ class QuestionPageTests(TakeTestCase):
         self.assertContains(response, 'aria-current="page"', count=1)
         # Таймер: қалған уақыт сервердегі мерзімнен
         remaining = response.context["remaining_seconds"]
-        self.assertTrue(TEST_DURATION_MINUTES * 60 - 5 <= remaining <= TEST_DURATION_MINUTES * 60)
+        self.assertTrue(INFORMATICS_MINUTES * 60 - 5 <= remaining <= INFORMATICS_MINUTES * 60)
         self.assertContains(response, f'data-remaining="{remaining}"')
         self.assertContains(response, reverse("quiz:attempt_finish", args=[self.attempt.pk]))
         self.assertContains(response, "js/timer.js")
@@ -1780,8 +1798,8 @@ class TeacherResultsTests(TestCase):
             username="teacher", password="pass12345", is_staff=True
         )
         self.client.force_login(self.teacher)
-        self.group_a = StudyGroup.objects.create(name="ИНФ-21")
-        self.group_b = StudyGroup.objects.create(name="ИНФ-22")
+        self.group_a = StudyGroup.objects.create(name="ИНФ-21", subject=informatics())
+        self.group_b = StudyGroup.objects.create(name="ИНФ-22", subject=informatics())
         self.autumn = make_session(title="Күзгі сессия")
         self.spring = make_session(title="Көктемгі сессия")
         self.aigerim = self.make_student("aigerim", "Айгерім", "Сапарова", self.group_a)
@@ -1927,7 +1945,7 @@ class FullTranslationTests(VariantTestCase):
         Question.objects.filter(language="kk").delete()
         Context.objects.filter(language="kk").delete()
 
-        self.group = StudyGroup.objects.create(name="INF-21")
+        self.group = StudyGroup.objects.create(name="INF-21", subject=informatics())
         self.student = User.objects.create_user(
             username="student", password="pass12345", first_name="Ivan", last_name="Petrov"
         )
@@ -2330,3 +2348,276 @@ class LoadtestDataTests(VariantTestCase):
         self.assertEqual(names[99], "student100")
         self.assertEqual(names[-1], "student1000")
         self.assertEqual(len(set(names)), 1000)
+
+
+# ---------- 9-кезең: пәндер ----------
+
+
+class LoadSubjectsTests(TestCase):
+    # Тақырыптар саны (TZ.md, 10.1)
+    EXPECTED_TOPICS = {
+        "informatics": 11,
+        "art_labor_boys": 5,
+        "art_labor_girls": 5,
+        "mathematics": 20,
+    }
+
+    def test_loads_4_subjects(self):
+        run_command("load_subjects")
+        self.assertEqual(
+            list(Subject.objects.values_list("code", flat=True)), list(self.EXPECTED_TOPICS)
+        )
+        for code, topic_count in self.EXPECTED_TOPICS.items():
+            with self.subTest(code=code):
+                subject = Subject.objects.get(code=code)
+                self.assertEqual(subject.topics.count(), topic_count)
+                numbers = Subtopic.objects.filter(topic__subject=subject).values_list(
+                    "number", flat=True
+                )
+                self.assertEqual(sorted(numbers), list(range(1, SUBTOPICS_COUNT + 1)))
+
+    def test_subject_settings(self):
+        run_command("load_subjects")
+        durations = dict(Subject.objects.values_list("code", "duration_minutes"))
+        self.assertEqual(
+            durations,
+            {"informatics": 125, "art_labor_boys": 80, "art_labor_girls": 80, "mathematics": 125},
+        )
+        self.assertTrue(Subject.objects.get(code="mathematics").uses_formulas)
+        self.assertFalse(Subject.objects.get(code="informatics").uses_formulas)
+        # Толық мазмұны да жүктеледі
+        subtopic = Subtopic.objects.get(topic__subject__code="mathematics", number=1)
+        self.assertNotEqual(subtopic.description_kk, "")
+
+    def test_is_idempotent(self):
+        run_command("load_subjects")
+        run_command("load_subjects")
+        self.assertEqual(Subject.objects.count(), 4)
+        self.assertEqual(Topic.objects.count(), sum(self.EXPECTED_TOPICS.values()))
+        self.assertEqual(Subtopic.objects.count(), 4 * SUBTOPICS_COUNT)
+
+    def test_only_one_subject(self):
+        run_command("load_subjects", "--only", "mathematics")
+        self.assertEqual(
+            set(Subject.objects.values_list("code", flat=True)), {"informatics", "mathematics"}
+        )
+        self.assertEqual(Topic.objects.filter(subject__code="mathematics").count(), 20)
+        # Информатика пәні миграцияда жасалған, тақырыптары жүктелмеген
+        self.assertFalse(Topic.objects.filter(subject__code="informatics").exists())
+
+    def test_unknown_subject(self):
+        with self.assertRaises(CommandError):
+            run_command("load_subjects", "--only", "physics")
+
+    def test_load_topics_loads_only_informatics(self):
+        run_command("load_topics")
+        self.assertEqual(Subject.objects.count(), 1)
+        self.assertEqual(Topic.objects.filter(subject=informatics()).count(), 11)
+        self.assertEqual(Subtopic.objects.count(), SUBTOPICS_COUNT)
+
+    def test_existing_informatics_is_updated_not_duplicated(self):
+        subject = informatics()
+        run_command("load_subjects")
+        self.assertEqual(Subject.objects.get(code=INFORMATICS_CODE).pk, subject.pk)
+
+    def check_invalid(self, change):
+        """Деректерді бұзып жүктейді: қате шығып, ештеңе жазылмауы керек."""
+        subjects = read_subjects()
+        change(subjects)
+        path = "apps.quiz.management.commands.load_subjects.read_subjects"
+        with mock.patch(path, return_value=subjects):
+            with self.assertRaises(CommandError):
+                run_command("load_subjects")
+        self.assertEqual(Subject.objects.count(), 1)  # миграциядағы информатика ғана
+        self.assertFalse(Topic.objects.exists())
+        self.assertFalse(Subtopic.objects.exists())
+
+    def test_rejects_19_subtopics(self):
+        # Математиканың соңғы тақырыпшасы жоқ: басқа пәндер дұрыс болса да жазылмайды
+        self.check_invalid(lambda subjects: subjects[3]["topics"][-1]["subtopics"].pop())
+
+    def test_rejects_gap_in_numbers(self):
+        def change(subjects):
+            subjects[1]["topics"][0]["subtopics"][0]["number"] = 21
+
+        self.check_invalid(change)
+
+    def test_rejects_empty_name(self):
+        def change(subjects):
+            subjects[2]["topics"][0]["subtopics"][0]["name_ru"] = " "
+
+        self.check_invalid(change)
+
+
+class SubjectModelTests(TestCase):
+    def setUp(self):
+        run_command("load_subjects")
+        self.mathematics = Subject.objects.get(code="mathematics")
+
+    def test_topic_number_is_unique_within_subject(self):
+        with self.assertRaises(IntegrityError):
+            Topic.objects.create(subject=self.mathematics, number=1, name_kk="А", name_ru="А")
+
+    def test_subtopic_numbers_repeat_across_subjects(self):
+        self.assertEqual(Subtopic.objects.filter(number=1).count(), 4)
+
+    def test_context_subject_must_match_question_subject(self):
+        context = Context.objects.create(
+            subject=self.mathematics, language="kk", title="Кесте", text="Мәтін"
+        )
+        subtopic = Subtopic.objects.get(topic__subject=informatics(), number=1)
+        question = Question(
+            subtopic=subtopic, context=context, language="kk", text="Сұрақ", level="B"
+        )
+        with self.assertRaises(ValidationError):
+            question.full_clean()
+        # Сол пәннің тақырыпшасымен — дұрыс
+        question.subtopic = Subtopic.objects.get(topic__subject=self.mathematics, number=1)
+        question.full_clean()
+
+    def test_name_follows_interface_language(self):
+        subject = Subject.objects.get(code="art_labor_boys")
+        with override("ru"):
+            self.assertEqual(str(subject), subject.name_ru)
+        with override("kk"):
+            self.assertEqual(str(subject), subject.name_kk)
+
+
+class SessionSubjectFormTests(TestCase):
+    def setUp(self):
+        run_command("load_subjects")
+        self.mathematics = Subject.objects.get(code="mathematics")
+        self.math_group = StudyGroup.objects.create(name="МАТ-21", subject=self.mathematics)
+        self.inf_group = StudyGroup.objects.create(name="ИНФ-21", subject=informatics())
+
+    def form(self, *groups):
+        today = timezone.localdate().strftime("%Y-%m-%d")
+        return ExamSessionAdminForm(
+            {
+                "title": "Сессия",
+                "subject": self.mathematics.pk,
+                "opens_at": f"{today} 09:00",
+                "closes_at": f"{today} 18:00",
+                "groups": [group.pk for group in groups],
+                "show_answers": ExamSession.ShowAnswers.AFTER_FINISH,
+                "is_active": "on",
+            }
+        )
+
+    def test_groups_of_same_subject(self):
+        form = self.form(self.math_group)
+        self.assertTrue(form.is_valid(), form.errors)
+
+    def test_group_of_other_subject_is_rejected(self):
+        form = self.form(self.math_group, self.inf_group)
+        self.assertFalse(form.is_valid())
+        self.assertIn("ИНФ-21", str(form.errors["groups"]))
+
+
+class SubjectDurationTests(TakeTestCase):
+    """Тест уақыты сессияның пәнінен алынады (көркем еңбек — 80 мин)."""
+
+    def setUp(self):
+        super().setUp()
+        self.now = timezone.now()
+        # Банк әзірге информатикадан (нұсқаны пән бойынша сүзу — 10–11-кезеңдер)
+        self.art_labor = Subject.objects.create(
+            code="art_labor_boys",
+            name_kk="Көркем еңбек",
+            name_ru="Художественный труд",
+            duration_minutes=80,
+        )
+        self.art_session = make_session(subject=self.art_labor)
+
+    def test_art_labor_deadline_is_80_minutes(self):
+        attempt = create_attempt(self.student, self.art_session, "kk", now=self.now)
+        self.assertEqual(attempt.deadline, self.now + timedelta(minutes=80))
+
+    def test_informatics_deadline_is_125_minutes(self):
+        attempt = create_attempt(self.student, self.session, "kk", now=self.now)
+        self.assertEqual(attempt.deadline, self.now + timedelta(minutes=125))
+
+    def test_deadline_does_not_exceed_session_close(self):
+        self.art_session.closes_at = self.now + timedelta(minutes=50)
+        self.art_session.save()
+        attempt = create_attempt(self.student, self.art_session, "kk", now=self.now)
+        self.assertEqual(attempt.deadline, self.art_session.closes_at)
+
+    def test_start_page_shows_subject_duration(self):
+        response = self.client.get(reverse("quiz:session_start", args=[self.art_session.pk]))
+        self.assertContains(response, "80 минут")
+        self.assertNotContains(response, "125 минут")
+
+
+class TeacherContextSubjectTests(TeacherTestCase):
+    def test_new_context_belongs_to_first_subject(self):
+        self.client.post(
+            reverse("quiz:teacher_context_create"),
+            {"title": "Кесте", "language": "kk", "text": "Мәтін", "is_active": "on"},
+        )
+        self.assertEqual(Context.objects.get().subject, informatics())
+
+
+class InformaticsMigrationTests(TransactionTestCase):
+    """Деректер миграциясы: бұрынғы жазбалар «Информатикаға» байланады, ештеңе жоғалмайды."""
+
+    # Тест соңында миграция жасаған деректер (информатика пәні) қалпына келеді
+    serialized_rollback = True
+
+    before = [("quiz", "0001_initial"), ("accounts", "0001_initial")]
+    after = [("quiz", "0004_subject_required"), ("accounts", "0003_subject_required")]
+
+    def migrate(self, targets):
+        executor = MigrationExecutor(connection)
+        executor.migrate(targets)
+        return executor.loader.project_state(targets).apps
+
+    def tearDown(self):
+        # Барлық миграцияны қайта қолданамыз (келесі тесттер үшін)
+        executor = MigrationExecutor(connection)
+        executor.migrate(executor.loader.graph.leaf_nodes())
+
+    def test_old_data_is_bound_to_informatics(self):
+        old = self.migrate(self.before)
+        now = timezone.now()
+        group = old.get_model("accounts", "StudyGroup").objects.create(name="ИНФ-21")
+        topic = old.get_model("quiz", "Topic").objects.create(number=1, name_kk="Т", name_ru="Т")
+        old.get_model("quiz", "Subtopic").objects.create(
+            topic=topic, number=1, name_kk="Т", name_ru="Т"
+        )
+        old.get_model("quiz", "Context").objects.create(language="kk", title="К", text="М")
+        session = old.get_model("quiz", "ExamSession").objects.create(
+            title="Сессия", opens_at=now, closes_at=now + timedelta(hours=2)
+        )
+        session.groups.add(group)
+        old_users = old.get_model("auth", "User").objects
+        old_profiles = old.get_model("accounts", "Profile").objects
+        teacher = old_users.create(username="teacher", is_staff=True)
+        student = old_users.create(username="student")
+        old_profiles.create(user=teacher)
+        old_profiles.create(user=student, group=group)
+        old.get_model("quiz", "Attempt").objects.create(
+            user=student, session=session, language="kk", deadline=now, score=10
+        )
+
+        new = self.migrate(self.after)
+        subject = new.get_model("quiz", "Subject").objects.get(code="informatics")
+        self.assertEqual(subject.duration_minutes, 125)
+        for app_label, model_name in [
+            ("quiz", "Topic"),
+            ("quiz", "Context"),
+            ("quiz", "ExamSession"),
+            ("accounts", "StudyGroup"),
+        ]:
+            with self.subTest(model=model_name):
+                objects = new.get_model(app_label, model_name).objects
+                self.assertEqual(objects.count(), 1)
+                self.assertEqual(objects.get().subject_id, subject.pk)
+        self.assertEqual(new.get_model("quiz", "Subtopic").objects.count(), 1)
+        self.assertEqual(new.get_model("quiz", "Attempt").objects.get().score, 10)
+        new_session = new.get_model("quiz", "ExamSession").objects.get()
+        self.assertEqual(new_session.groups.count(), 1)
+
+        profiles = new.get_model("accounts", "Profile").objects
+        self.assertEqual(list(profiles.get(user__username="teacher").subjects.all()), [subject])
+        self.assertFalse(profiles.get(user__username="student").subjects.exists())

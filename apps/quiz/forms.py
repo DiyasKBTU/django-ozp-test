@@ -319,6 +319,31 @@ class ContextForm(forms.ModelForm):
         return language
 
 
+# ---------- Сессия (admin) ----------
+
+
+class ExamSessionAdminForm(forms.ModelForm):
+    """Admin-дегі сессия формасы: таңдалған топтардың бәрі сессияның пәнінен."""
+
+    class Meta:
+        model = ExamSession
+        fields = "__all__"
+
+    def clean(self):
+        cleaned_data = super().clean()
+        subject = cleaned_data.get("subject")
+        groups = cleaned_data.get("groups")
+        if subject and groups:
+            foreign = [group.name for group in groups if group.subject_id != subject.pk]
+            if foreign:
+                self.add_error(
+                    "groups",
+                    _("Бұл топтар басқа пәнге жатады: %(groups)s")
+                    % {"groups": ", ".join(foreign)},
+                )
+        return cleaned_data
+
+
 # ---------- Тест тапсыру (студент) ----------
 
 

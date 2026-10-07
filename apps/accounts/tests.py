@@ -2,7 +2,14 @@ from django.contrib.auth.models import User
 from django.test import TestCase
 from django.urls import reverse
 
+from apps.quiz.models import Subject
+
 from .models import Profile, StudyGroup
+
+
+def informatics():
+    """Деректер миграциясы жасаған «Информатика» пәні."""
+    return Subject.objects.get(code="informatics")
 
 
 class ProfileTests(TestCase):
@@ -12,7 +19,7 @@ class ProfileTests(TestCase):
         self.assertIsNone(user.profile.group)
 
     def test_profile_group(self):
-        group = StudyGroup.objects.create(name="ИНФ-21")
+        group = StudyGroup.objects.create(name="ИНФ-21", subject=informatics())
         user = User.objects.create_user(username="student", password="pass12345")
         user.profile.group = group
         user.profile.save()
@@ -25,7 +32,7 @@ class ProfileTests(TestCase):
 
 class RegisterTests(TestCase):
     def setUp(self):
-        self.group = StudyGroup.objects.create(name="ИНФ-21")
+        self.group = StudyGroup.objects.create(name="ИНФ-21", subject=informatics())
 
     def register_data(self, **overrides):
         data = {

@@ -26,7 +26,6 @@ from .constants import (
     QUESTIONS_PER_CONTEXT,
     QUESTIONS_TOTAL,
     SINGLE_QUESTIONS_PER_SUBTOPIC,
-    TEST_DURATION_MINUTES,
 )
 from .models import (
     Answer,
@@ -37,11 +36,23 @@ from .models import (
     Language,
     Level,
     Question,
+    Subject,
     Subtopic,
     Topic,
 )
 
 logger = logging.getLogger(__name__)
+
+
+# ---------- Пәндер ----------
+
+
+def default_subject():
+    """
+    Бірінші белсенді пән (реті бойынша — информатика). Оқытушының пән
+    ауыстырғышы (10-кезең) жасалғанша жаңа контексттер осы пәнге жазылады.
+    """
+    return Subject.objects.filter(is_active=True).first()
 
 
 # ---------- Сұрақтар ----------
@@ -512,7 +523,7 @@ def create_attempt(user, session, language, now=None, rng=None):
     """
     Тестті бастау: сессия ашық екенін және студент бұл сессияда бұрын
     бастамағанын тексереді, нұсқа құрып, әр сұрақтың жауап нұсқаларын араластырады.
-    deadline = min(басталған уақыт + 125 минут, сессияның жабылуы).
+    deadline = min(басталған уақыт + пәннің тест уақыты, сессияның жабылуы).
     """
     if now is None:
         now = timezone.now()
@@ -536,7 +547,8 @@ def create_attempt(user, session, language, now=None, rng=None):
                 language=language,
                 started_at=now,
                 deadline=min(
-                    now + timedelta(minutes=TEST_DURATION_MINUTES), session.closes_at
+                    now + timedelta(minutes=session.subject.duration_minutes),
+                    session.closes_at,
                 ),
             )
     except IntegrityError:

@@ -32,6 +32,7 @@ from .services import (
     bank_coverage,
     build_variant,
     copy_question,
+    default_subject,
     finish_expired_attempts,
     results_rows,
     results_summary,
@@ -155,14 +156,16 @@ def context_list(request):
 
 def context_form_page(request, quiz_context=None):
     """Контекст жасау (quiz_context=None) және өңдеу беттерінің ортақ бөлігі."""
+    # Жаңа контекстің пәні (пән ауыстырғышы 10-кезеңде қосылады)
+    instance = quiz_context or Context(subject=default_subject())
     if request.method == "POST":
-        form = ContextForm(request.POST, request.FILES, instance=quiz_context)
+        form = ContextForm(request.POST, request.FILES, instance=instance)
         if form.is_valid():
             quiz_context = form.save()
             messages.success(request, _("Контекст сақталды."))
             return redirect("quiz:teacher_context_edit", pk=quiz_context.pk)
     else:
-        form = ContextForm(instance=quiz_context)
+        form = ContextForm(instance=instance)
 
     questions = []
     active_count = 0

@@ -8,13 +8,16 @@ from .models import Profile, StudyGroup
 
 @admin.register(StudyGroup)
 class StudyGroupAdmin(admin.ModelAdmin):
-    list_display = ["name"]
+    list_display = ["name", "subject"]
+    list_filter = ["subject"]
     search_fields = ["name"]
 
 
 class ProfileInline(admin.StackedInline):
     model = Profile
     can_delete = False
+    # Пәндер тек оқытушыға тағайындалады
+    filter_horizontal = ["subjects"]
 
 
 # Қолданушы бетінде профильді (топты) бірге көрсету

@@ -16,8 +16,8 @@
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
-from apps.quiz.constants import SUBTOPICS_COUNT
-from apps.quiz.models import Answer, Attempt, Context, Question, Subtopic
+from apps.quiz.constants import INFORMATICS_CODE, SUBTOPICS_COUNT
+from apps.quiz.models import Answer, Attempt, Context, Question, Subject, Subtopic
 
 LANGUAGES = ["kk", "ru"]
 
@@ -307,8 +307,13 @@ class Command(BaseCommand):
 
     @transaction.atomic
     def load_demo(self):
-        subtopics = {subtopic.number: subtopic for subtopic in Subtopic.objects.all()}
-        if len(subtopics) != SUBTOPICS_COUNT:
+        # Демо сұрақтар — информатикаға (басқа пәндерге 12-кезеңде қосылады)
+        subject = Subject.objects.filter(code=INFORMATICS_CODE).first()
+        subtopics = {
+            subtopic.number: subtopic
+            for subtopic in Subtopic.objects.filter(topic__subject=subject)
+        }
+        if subject is None or len(subtopics) != SUBTOPICS_COUNT:
             raise CommandError("Алдымен тақырыптарды жүктеңіз: python manage.py load_topics")
 
         if Question.objects.filter(is_demo=True).exists():
@@ -342,6 +347,7 @@ class Command(BaseCommand):
 
             # 3) Python программасы бар нақты контекст
             context = Context.objects.create(
+                subject=subject,
                 language=language,
                 title=REAL_CONTEXT["title"][language],
                 text=REAL_CONTEXT["text"][language],
@@ -361,6 +367,7 @@ class Command(BaseCommand):
             # 4) Үлгі контексттер
             for template in TEMPLATE_CONTEXTS:
                 context = Context.objects.create(
+                    subject=subject,
                     language=language,
                     title=template["title"][language],
                     text=template["text"][language],
