@@ -19,9 +19,12 @@ class RegisterForm(UserCreationForm):
 
     first_name = forms.CharField(label=_("Аты"), max_length=150)
     last_name = forms.CharField(label=_("Тегі"), max_length=150)
+    # Топтар белсенді пәндер бойынша топталып көрсетіледі: «МАТ-21 — Математика»
     group = forms.ModelChoiceField(
         label=_("Тобы"),
-        queryset=StudyGroup.objects.all(),
+        queryset=StudyGroup.objects.filter(subject__is_active=True)
+        .select_related("subject")
+        .order_by("subject__order", "name"),
         empty_label=_("— тізімнен таңдаңыз —"),
     )
 
@@ -53,7 +56,22 @@ class RegisterForm(UserCreationForm):
         )
         self.fields["password2"].label = _("Құпия сөзді қайталаңыз")
         self.fields["password2"].help_text = ""
+        self.fields["group"].choices = self.group_choices()
         add_bootstrap_classes(self)
+
+    def group_choices(self):
+        """
+        <optgroup> бойынша топталған тізім: [("", бос жол), (пән, [(id, «топ — пән»), ...]), ...].
+        Тексеру бұрынғыдай queryset арқылы өтеді.
+        """
+        field = self.fields["group"]
+        choices = [("", field.empty_label)]
+        by_subject = {}
+        for group in field.queryset:
+            label = f"{group.name} — {group.subject.name}"
+            by_subject.setdefault(group.subject.name, []).append((group.pk, label))
+        choices.extend(by_subject.items())
+        return choices
 
     def save(self, commit=True):
         user = super().save(commit=commit)

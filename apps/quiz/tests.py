@@ -86,6 +86,18 @@ def make_teacher(username="teacher", subjects=None):
     return teacher
 
 
+def make_student(username="student", group=None, **extra):
+    """Студент; әдепкіде «ИНФ-21» (информатика) тобында — студенттің пәні тобынан."""
+    if group is None:
+        group, _created = StudyGroup.objects.get_or_create(
+            name="ИНФ-21", defaults={"subject": informatics()}
+        )
+    student = User.objects.create_user(username=username, password="pass12345", **extra)
+    student.profile.group = group
+    student.profile.save()
+    return student
+
+
 def run_command(*args):
     """Команданы шығысын жасырып іске қосады."""
     call_command(*args, stdout=StringIO())
@@ -813,12 +825,13 @@ class DashboardTests(StudentTestCase):
         self.assertNotContains(response, "Бөтен топ")
         self.assertNotContains(response, "Белсенді емес")
 
-    def test_student_without_group_sees_only_sessions_for_all(self):
-        for_all = self.session_for(title="Барлығына")
+    def test_student_without_group_sees_nothing(self):
+        # Студенттің пәні тобынан анықталады: тобы жоқ болса, пәні де, сессиясы да жоқ
+        self.session_for(title="Барлығына")
         self.session_for(self.group, title="Өз тобы")
         self.student.profile.group = None
         self.student.profile.save()
-        self.assertEqual(list(visible_sessions(self.student)), [for_all])
+        self.assertEqual(list(visible_sessions(self.student)), [])
 
     def test_open_close_boundaries(self):
         now = timezone.now()
@@ -1268,7 +1281,7 @@ class TranslationTests(StudentTestCase):
         self.client.logout()
         self.switch_language("ru")
         pages = {
-            reverse("quiz:home"): "Подготовка к тесту ОЗП по информатике",
+            reverse("quiz:home"): "Подготовка к тесту ОЗП",
             reverse("accounts:login"): "Ещё не зарегистрированы?",
             reverse("accounts:register"): "Повторите пароль",
         }
@@ -1315,9 +1328,7 @@ class TakeTestCase(VariantTestCase):
     """Демо банк, ашық сессия және кірген студент."""
 
     def setUp(self):
-        self.student = User.objects.create_user(
-            username="student", password="pass12345", first_name="Асқар"
-        )
+        self.student = make_student(first_name="Асқар")
         self.client.force_login(self.student)
         self.session = make_session(title="Күзгі сынақ")
 
@@ -2102,7 +2113,7 @@ class FullTranslationTests(VariantTestCase):
 
 class PracticeTests(VariantTestCase):
     def setUp(self):
-        self.student = User.objects.create_user(username="student", password="pass12345")
+        self.student = make_student()
         self.client.force_login(self.student)
         # 08 тақырып: 4 тақырыпша — сұрақ көп
         self.topic = Topic.objects.get(number=8)
@@ -2542,6 +2553,9 @@ class SubjectDurationTests(TakeTestCase):
         self.assertEqual(attempt_deadline(self.art_session, self.now), self.art_session.closes_at)
 
     def test_start_page_shows_subject_duration(self):
+        # Көркем еңбек сессиясын тек сол пәннің тобындағы студент көреді
+        self.student.profile.group = StudyGroup.objects.create(name="КЕ-21", subject=self.art_labor)
+        self.student.profile.save()
         response = self.client.get(reverse("quiz:session_start", args=[self.art_session.pk]))
         self.assertContains(response, "80 минут")
         self.assertNotContains(response, "125 минут")
@@ -2972,3 +2986,190 @@ class SubjectVariantTests(VariantTestCase):
         self.assertEqual(coverage["rows"][0]["cells"][0]["count"], 1)
         # Толық контекст: kk — 1, ru — 0
         self.assertEqual([item["count"] for item in coverage["contexts"]], [1, 0])
+
+
+# ---------- 11-кезең: студент жағы (пән — тобынан) ----------
+
+
+class StudentSubjectTestCase(TestCase):
+    """4 пән; ИНФ-21, МАТ-21, КЕ-21 топтары және МАТ-21 тобындағы кірген студент."""
+
+    def setUp(self):
+        run_command("load_subjects")
+        self.informatics = informatics()
+        self.mathematics = Subject.objects.get(code="mathematics")
+        self.art_labor = Subject.objects.get(code="art_labor_boys")
+        self.inf_group = StudyGroup.objects.create(name="ИНФ-21", subject=self.informatics)
+        self.math_group = StudyGroup.objects.create(name="МАТ-21", subject=self.mathematics)
+        self.art_group = StudyGroup.objects.create(name="КЕ-21", subject=self.art_labor)
+        self.student = make_student(group=self.math_group)
+        self.client.force_login(self.student)
+
+    def session_for(self, subject, *groups, **kwargs):
+        session = make_session(subject=subject, **kwargs)
+        session.groups.set(groups)
+        return session
+
+
+class StudentSessionsBySubjectTests(StudentSubjectTestCase):
+    def test_student_sees_only_own_subject_sessions(self):
+        math_for_all = self.session_for(self.mathematics, title="Математика барлығына")
+        math_own = self.session_for(self.mathematics, self.math_group, title="МАТ-21 сессиясы")
+        self.session_for(self.informatics, title="Информатика барлығына")
+        self.session_for(self.informatics, self.inf_group, title="ИНФ-21 сессиясы")
+        self.assertCountEqual(visible_sessions(self.student), [math_for_all, math_own])
+
+    def test_math_session_for_all_is_hidden_from_inf_group(self):
+        math_for_all = self.session_for(self.mathematics, title="Математика барлығына")
+        inf_student = make_student(username="inf", group=self.inf_group)
+        self.assertEqual(list(visible_sessions(inf_student)), [])
+        self.client.force_login(inf_student)
+        url = reverse("quiz:session_start", args=[math_for_all.pk])
+        self.assertEqual(self.client.get(url).status_code, 404)
+        self.assertNotContains(self.client.get(reverse("quiz:dashboard")), "Математика барлығына")
+
+    def test_dashboard_shows_subject_and_duration(self):
+        self.session_for(self.mathematics, title="Математика сессиясы")
+        response = self.client.get(reverse("quiz:dashboard"))
+        self.assertContains(response, "Пән: Математика · Топ: МАТ-21")
+        self.assertContains(response, "Математика сессиясы")
+        self.assertContains(response, "125 минут")
+
+    def test_art_labor_dashboard_and_start_page_show_80_minutes(self):
+        session = self.session_for(self.art_labor, title="Көркем еңбек сессиясы")
+        art_student = make_student(username="art", group=self.art_group)
+        self.client.force_login(art_student)
+        self.assertContains(self.client.get(reverse("quiz:dashboard")), "80 минут")
+        response = self.client.get(reverse("quiz:session_start", args=[session.pk]))
+        self.assertContains(response, "80 минут")
+        self.assertContains(response, self.art_labor.name_kk)
+
+    def test_student_without_group_sees_warning(self):
+        self.student.profile.group = None
+        self.student.profile.save()
+        self.session_for(self.mathematics, title="Математика барлығына")
+        response = self.client.get(reverse("quiz:dashboard"))
+        self.assertContains(response, "Сіздің тобыңыз көрсетілмеген")
+        self.assertNotContains(response, "Математика барлығына")
+
+
+class StudentPracticeBySubjectTests(StudentSubjectTestCase):
+    def test_practice_lists_only_own_subject_topics(self):
+        response = self.client.get(reverse("quiz:practice_start"))
+        topics = response.context["form"].fields["topic"].queryset
+        self.assertEqual(topics.count(), 20)
+        self.assertFalse(topics.exclude(subject=self.mathematics).exists())
+        self.assertContains(response, "Пән: Математика")
+
+    def test_other_subject_topic_is_rejected(self):
+        inf_topic = Topic.objects.get(subject=self.informatics, number=1)
+        response = self.client.post(
+            reverse("quiz:practice_start"), {"topic": inf_topic.pk, "language": "kk"}
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("topic", response.context["form"].errors)
+        self.assertNotIn("practice", self.client.session)
+
+    def test_practice_from_own_subject(self):
+        topic = Topic.objects.get(subject=self.mathematics, number=1)
+        subtopic = topic.subtopics.first()
+        question = Question.objects.create(subtopic=subtopic, language="kk", text="2+2?", level="A")
+        for index in range(ANSWERS_PER_QUESTION):
+            Answer.objects.create(question=question, text=str(index), is_correct=index == 0)
+        response = self.client.post(
+            reverse("quiz:practice_start"), {"topic": topic.pk, "language": "kk"}
+        )
+        self.assertRedirects(response, reverse("quiz:practice_question", args=[1]))
+        self.assertEqual(self.client.session["practice"]["items"][0]["question"], question.pk)
+
+    def test_without_group_no_topics(self):
+        self.student.profile.group = None
+        self.student.profile.save()
+        response = self.client.get(reverse("quiz:practice_start"))
+        self.assertContains(response, "Сіздің тобыңыз көрсетілмеген")
+        self.assertNotContains(response, "Жаттығуды бастау")
+
+
+class StudentResultBySubjectTests(StudentSubjectTestCase):
+    def finished_attempt(self, subject, group):
+        student = make_student(username=f"s-{subject.code}", group=group)
+        session = self.session_for(subject, title=f"{subject.code} сессиясы")
+        now = timezone.now()
+        attempt = Attempt.objects.create(
+            user=student,
+            session=session,
+            language="kk",
+            started_at=now - timedelta(minutes=40),
+            deadline=now + timedelta(minutes=40),
+            finished_at=now,
+            status=Attempt.Status.FINISHED,
+            score=0,
+        )
+        self.client.force_login(student)
+        return attempt
+
+    def test_topic_analysis_uses_subject_topics(self):
+        cases = [(self.art_labor, self.art_group, 5), (self.mathematics, self.math_group, 20)]
+        for subject, group, topic_count in cases:
+            with self.subTest(subject=subject.code):
+                attempt = self.finished_attempt(subject, group)
+                response = self.client.get(reverse("quiz:attempt_result", args=[attempt.pk]))
+                topics = response.context["result"]["topics"]
+                self.assertEqual(len(topics), topic_count)
+                self.assertTrue(all(row["topic"].subject_id == subject.pk for row in topics))
+                self.assertContains(response, subject.name_kk)
+
+
+class RegisterBySubjectTests(StudentSubjectTestCase):
+    def setUp(self):
+        super().setUp()
+        self.client.logout()
+
+    def test_groups_are_grouped_by_subject(self):
+        response = self.client.get(reverse("accounts:register"))
+        self.assertContains(response, 'optgroup label="Математика"')
+        self.assertContains(response, "МАТ-21 — Математика")
+        self.assertContains(response, "ИНФ-21 — Информатика")
+        choices = response.context["form"].fields["group"].choices
+        # Бос жол, сосын пәндер реті бойынша: информатика, көркем еңбек, математика
+        self.assertEqual(
+            [label for label, _options in choices[1:]],
+            ["Информатика", self.art_labor.name_kk, "Математика"],
+        )
+
+    def test_group_labels_follow_interface_language(self):
+        self.client.cookies["django_language"] = "ru"
+        response = self.client.get(reverse("accounts:register"))
+        self.assertContains(response, f"КЕ-21 — {self.art_labor.name_ru}")
+
+    def test_inactive_subject_groups_are_hidden(self):
+        self.art_labor.is_active = False
+        self.art_labor.save()
+        response = self.client.get(reverse("accounts:register"))
+        self.assertNotContains(response, "КЕ-21")
+
+    def test_register_into_math_group(self):
+        response = self.client.post(
+            reverse("accounts:register"),
+            {
+                "first_name": "Айгерім",
+                "last_name": "Сапарова",
+                "group": self.math_group.pk,
+                "username": "aigerim",
+                "password1": "Qazaq-Test-2026",
+                "password2": "Qazaq-Test-2026",
+            },
+        )
+        self.assertRedirects(response, reverse("quiz:dashboard"))
+        user = User.objects.get(username="aigerim")
+        self.assertEqual(user.profile.group.subject, self.mathematics)
+
+
+class HomeSubjectsTests(TestCase):
+    def test_home_lists_subjects_with_duration(self):
+        run_command("load_subjects")
+        response = self.client.get(reverse("quiz:home"))
+        self.assertContains(response, "ПББ тестіне дайындық")
+        self.assertEqual(len(response.context["subjects"]), 4)
+        self.assertContains(response, "80 минут")
+        self.assertContains(response, "125 минут")

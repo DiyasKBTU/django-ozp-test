@@ -47,9 +47,17 @@ logger = logging.getLogger(__name__)
 # ---------- Пәндер ----------
 
 
-def default_subject():
-    """Бірінші белсенді пән (реті бойынша — информатика): басты беттегі мәлімет үшін."""
-    return Subject.objects.filter(is_active=True).first()
+def active_subjects():
+    """Белсенді пәндер реті бойынша (басты беттегі тізім)."""
+    return Subject.objects.filter(is_active=True)
+
+
+def student_subject(user):
+    """Студенттің пәні — тобының пәні (тобы жоқ болса — None)."""
+    profile = getattr(user, "profile", None)
+    if profile is None or profile.group is None:
+        return None
+    return profile.group.subject
 
 
 def teacher_subjects(user):
@@ -230,16 +238,21 @@ def bank_coverage(subject):
 
 def visible_sessions(user):
     """
-    Студентке көрінетін белсенді сессиялар: оның тобына арналғандары
-    және топтары бос (барлығына арналған) сессиялар.
+    Студентке көрінетін белсенді сессиялар (TZ.md, 10.5): тобының пәніндегі
+    сессиялар — оның тобына арналғандары және топтары бос (сол пәннің
+    барлық тобына арналған) сессиялар. Тобы жоқ студент ештеңе көрмейді.
     """
     profile = getattr(user, "profile", None)
     group = profile.group if profile else None
+    if group is None:
+        return ExamSession.objects.none()
 
-    for_group = Q(groups__isnull=True)
-    if group:
-        for_group |= Q(groups=group)
-    return ExamSession.objects.filter(for_group, is_active=True).distinct()
+    for_group = Q(groups__isnull=True) | Q(groups=group)
+    return (
+        ExamSession.objects.filter(for_group, is_active=True, subject_id=group.subject_id)
+        .select_related("subject")
+        .distinct()
+    )
 
 
 def split_duration(duration):
@@ -865,7 +878,7 @@ def percent(correct, total):
 def attempt_result(attempt, with_answers):
     """
     Әрекеттің нәтижесі: балл, пайыз, жұмсалған уақыт, A/B/C деңгейлері және
-    11 тақырып бойынша дұрыс жауаптар кестесі.
+    сессия пәнінің тақырыптары бойынша дұрыс жауаптар кестесі.
     with_answers=True болса — әр сұрақтың студент жауабы мен дұрыс жауабы да.
     """
     items = list(
@@ -890,7 +903,7 @@ def attempt_result(attempt, with_answers):
         for level, label in Level.choices
     ]
 
-    # Тақырып бойынша: 11 тақырыптың бәрі
+    # Тақырып бойынша: пәннің барлық тақырыбы (информатика — 11, көркем еңбек — 5, ...)
     topic_total = Counter(item.question.subtopic.topic_id for item in items)
     topic_correct = Counter(item.question.subtopic.topic_id for item in correct_items)
     topics = [
@@ -900,7 +913,7 @@ def attempt_result(attempt, with_answers):
             "total": topic_total[topic.pk],
             "percent": percent(topic_correct[topic.pk], topic_total[topic.pk]),
         }
-        for topic in Topic.objects.all()
+        for topic in Topic.objects.filter(subject_id=attempt.session.subject_id)
     ]
 
     spent_seconds = 0

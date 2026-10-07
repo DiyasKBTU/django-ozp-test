@@ -29,6 +29,7 @@
 - Оқытушының таңдалған пәні `request.session["teacher_subject_id"]`-да (навбардағы «Пән» ауыстырғышы, тек бірнеше пәні болса). Пәні жоқ оқытушыға — «Сізге пән тағайындалмаған» беті (403).
 - Банк пен нұсқа сервистері пәнді параметр ретінде алады: `build_variant(subject, language)`, `full_contexts(subject, language)`, `bank_coverage(subject)`, `variant_summary(subject, ids)`; `create_attempt()` пәнді сессиядан алады.
 - Тест мерзімі: `deadline = min(started_at + session.subject.duration_minutes, session.closes_at)`.
+- Студент жағы — тек тобының пәні (`services.student_subject`): сессиялар (`visible_sessions`: пәні бірдей және топтары бос не тобы ішінде; тобы жоқ — ештеңе), жаттығу тақырыптары, нәтижедегі тақырыптар талдауы. Тіркелудегі топтар пән бойынша `<optgroup>`-пен, «МАТ-21 — Математика».
 - **Жаңа пән кодты өзгертпей қосылады:** `subjects.json`-ға жазылып, `load_subjects` іске қосылады. Пәнге тән мән кодта жазылмайды (тек бұрынғы деректер үшін `constants.INFORMATICS_CODE`).
 
 ## Код жазу ережелері

@@ -3,10 +3,20 @@
 
 {% block content %}
 <div class="p-4 p-md-5 bg-white rounded shadow-sm">
-    <h1 class="h3 mb-3">{% translate "Информатика пәні бойынша ПББ тестіне дайындық" %}</h1>
+    <h1 class="h3 mb-3">{% translate "ПББ тестіне дайындық" %}</h1>
     <p class="lead">
-        {% blocktranslate %}Тест нақты форматта өтеді: {{ questions_total }} сұрақ, {{ duration_minutes }} минут.{% endblocktranslate %}
+        {% blocktranslate %}Тест нақты форматта өтеді: {{ questions_total }} сұрақ, уақыты пәнге байланысты.{% endblocktranslate %}
     </p>
+    {% if subjects %}
+        <ul class="list-group mb-3" style="max-width: 560px">
+            {% for subject in subjects %}
+                <li class="list-group-item d-flex justify-content-between align-items-center">
+                    {{ subject.name }}
+                    <span class="badge text-bg-light border">{% blocktranslate with minutes=subject.duration_minutes %}{{ minutes }} минут{% endblocktranslate %}</span>
+                </li>
+            {% endfor %}
+        </ul>
+    {% endif %}
     <ul>
         <li>{% blocktranslate %}Әр дұрыс жауап — 1 балл, ең жоғары балл — {{ questions_total }}.{% endblocktranslate %}</li>
         <li>{% translate "Тест оқытушы белгілеген уақытта ғана ашылады." %}</li>

@@ -5,9 +5,22 @@
 
 {% block content %}
 <div class="d-flex flex-wrap align-items-center gap-2 mb-4">
-    <h1 class="h4 mb-0 me-auto">{% translate "Жеке кабинет" %}</h1>
-    <a class="btn btn-outline-primary" href="{% url 'quiz:practice_start' %}">{% translate "Тақырыптық жаттығу" %}</a>
+    <div class="me-auto">
+        <h1 class="h4 mb-1">{% translate "Жеке кабинет" %}</h1>
+        {% if subject %}
+            <div class="text-muted">
+                {% blocktranslate with subject_name=subject.name group=user.profile.group %}Пән: {{ subject_name }} · Топ: {{ group }}{% endblocktranslate %}
+            </div>
+        {% endif %}
+    </div>
+    {% if subject %}
+        <a class="btn btn-outline-primary" href="{% url 'quiz:practice_start' %}">{% translate "Тақырыптық жаттығу" %}</a>
+    {% endif %}
 </div>
+
+{% if not subject %}
+    <div class="alert alert-warning">{% translate "Сіздің тобыңыз көрсетілмеген, сондықтан тест сессиялары көрінбейді. Оқытушыға хабарласыңыз." %}</div>
+{% endif %}
 
 <div class="row g-4">
     {# Ашық сессиялар: тестті бастауға болады #}
@@ -20,6 +33,7 @@
                         <div class="fw-semibold">{{ row.session.title }}</div>
                         <div class="small text-muted mb-2">
                             {% blocktranslate with closes=row.session.closes_at|date:"d.m.Y, H:i" %}Жабылады: {{ closes }}{% endblocktranslate %}
+                            · {% blocktranslate with minutes=row.session.subject.duration_minutes %}{{ minutes }} минут{% endblocktranslate %}
                         </div>
                         {% if row.attempt.status == "finished" %}
                             <span class="badge text-bg-secondary">{% translate "Тапсырылды" %}</span>
@@ -47,6 +61,7 @@
                         <div class="fw-semibold">{{ row.session.title }}</div>
                         <div class="small text-muted">
                             {{ row.session.opens_at|date:"d.m.Y, H:i" }} – {{ row.session.closes_at|date:"d.m.Y, H:i" }}
+                            · {% blocktranslate with minutes=row.session.subject.duration_minutes %}{{ minutes }} минут{% endblocktranslate %}
                         </div>
                         <div class="small">
                             {% with days=row.opens_in.days hours=row.opens_in.hours minutes=row.opens_in.minutes %}

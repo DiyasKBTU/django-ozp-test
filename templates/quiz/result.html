@@ -8,7 +8,7 @@
     <div class="me-auto">
         <h1 class="h4 mb-1">{% translate "Тест нәтижесі" %}</h1>
         <div class="text-muted small">
-            {{ attempt.session.title }} · {{ attempt.get_language_display }}
+            {{ attempt.session.subject.name }} · {{ attempt.session.title }} · {{ attempt.get_language_display }}
             {% if attempt.user_id != user.pk %}· {{ attempt.user.get_full_name|default:attempt.user.username }}{% endif %}
         </div>
     </div>

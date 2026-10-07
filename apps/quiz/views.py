@@ -14,8 +14,8 @@ from .services import (
     attempt_result,
     can_see_answers,
     create_attempt,
+    active_subjects,
     dashboard_sessions,
-    default_subject,
     finish_attempt,
     finish_expired_attempts,
     finish_if_expired,
@@ -28,6 +28,7 @@ from .services import (
     remaining_seconds,
     save_answer,
     start_practice,
+    student_subject,
     teacher_subjects,
     unanswered_numbers,
     visible_sessions,
@@ -35,12 +36,8 @@ from .services import (
 
 
 def home(request):
-    """Басты бет: тест туралы қысқаша мәлімет."""
-    subject = default_subject()
-    context = {
-        "questions_total": QUESTIONS_TOTAL,
-        "duration_minutes": subject.duration_minutes if subject else None,
-    }
+    """Басты бет: тест туралы қысқаша мәлімет және пәндер (тест уақытымен)."""
+    context = {"questions_total": QUESTIONS_TOTAL, "subjects": active_subjects()}
     return render(request, "quiz/home.html", context)
 
 
@@ -52,6 +49,7 @@ def dashboard(request):
     context = dashboard_sessions(request.user)
     context["attempts"] = request.user.attempts.select_related("session")
     context["questions_total"] = QUESTIONS_TOTAL
+    context["subject"] = student_subject(request.user)
     return render(request, "quiz/dashboard.html", context)
 
 
@@ -168,7 +166,7 @@ def attempt_result_page(request, attempt_id):
     Студент тек өз нәтижесін көреді (бөтені — 404), оқытушы — өз пәндерінің
     нәтижелерін (басқа пәннікі — 404).
     """
-    attempts = Attempt.objects.select_related("session", "user")
+    attempts = Attempt.objects.select_related("session__subject", "user")
     if request.user.is_staff:
         attempts = attempts.filter(session__subject__in=teacher_subjects(request.user))
     else:
@@ -198,8 +196,14 @@ PRACTICE_SESSION_KEY = "practice"
 
 @login_required
 def practice_start(request):
-    """GET — тақырып пен тілді таңдау, POST — жаңа жаттығу (алдыңғысының орнына)."""
-    form = PracticeStartForm(request.POST or None, initial={"language": interface_language()})
+    """
+    GET — тақырып пен тілді таңдау, POST — жаңа жаттығу (алдыңғысының орнына).
+    Тақырыптар — тек студенттің пәнінен (тобы жоқ болса — тізім бос).
+    """
+    subject = student_subject(request.user)
+    form = PracticeStartForm(
+        request.POST or None, initial={"language": interface_language()}, subject=subject
+    )
     if request.method == "POST" and form.is_valid():
         try:
             practice = start_practice(
@@ -213,6 +217,7 @@ def practice_start(request):
 
     context = {
         "form": form,
+        "subject": subject,
         "has_practice": PRACTICE_SESSION_KEY in request.session,
         "practice_questions": PRACTICE_QUESTIONS,
     }

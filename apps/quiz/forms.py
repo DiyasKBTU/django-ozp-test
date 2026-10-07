@@ -411,17 +411,18 @@ class AttemptAnswerForm(forms.Form):
 
 
 class PracticeStartForm(forms.Form):
-    """Тақырыптық жаттығуды бастау: тақырып және сұрақтар тілі."""
+    """Тақырыптық жаттығуды бастау: студенттің пәнінің тақырыбы және сұрақтар тілі."""
 
     topic = forms.ModelChoiceField(
-        label=_("Тақырып"), queryset=Topic.objects.all(), empty_label=None
+        label=_("Тақырып"), queryset=Topic.objects.none(), empty_label=None
     )
     language = forms.ChoiceField(
         label=_("Сұрақтар тілі"), choices=Language.choices, widget=forms.RadioSelect
     )
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, subject, **kwargs):
         super().__init__(*args, **kwargs)
+        self.fields["topic"].queryset = Topic.objects.filter(subject=subject)
         add_bootstrap_classes(self)
 
 
