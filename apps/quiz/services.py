@@ -1,16 +1,17 @@
 """
 Бизнес-логика (TZ.md, 3–4-бөлімдер): сұрақты сақтау және көшіру, банк толуы,
-студентке көрінетін сессиялар, тест нұсқасын құру.
-Балл есептеу кейінгі кезеңде осында қосылады.
+студентке көрінетін сессиялар, тест нұсқасын құру, тест тапсыру (жауап сақтау,
+аяқтау, балл есептеу) және нәтиже талдауы.
 """
 
 import logging
+import math
 import random
 from collections import Counter
 from datetime import timedelta
 from itertools import combinations
 
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.db.models import Count, Q
 from django.utils import timezone
 from django.utils.translation import gettext as _
@@ -35,6 +36,7 @@ from .models import (
     Level,
     Question,
     Subtopic,
+    Topic,
 )
 
 logger = logging.getLogger(__name__)
@@ -522,13 +524,21 @@ def create_attempt(user, session, language, now=None, rng=None):
 
     question_ids = build_variant(language, rng)
 
-    attempt = Attempt.objects.create(
-        user=user,
-        session=session,
-        language=language,
-        started_at=now,
-        deadline=min(now + timedelta(minutes=TEST_DURATION_MINUTES), session.closes_at),
-    )
+    try:
+        # Екі сұраныс қатар келсе (батырма екі рет басылса), екіншісі
+        # (user, session) шектеуіне соғылады — жаңа әрекет жасалмайды
+        with transaction.atomic():
+            attempt = Attempt.objects.create(
+                user=user,
+                session=session,
+                language=language,
+                started_at=now,
+                deadline=min(
+                    now + timedelta(minutes=TEST_DURATION_MINUTES), session.closes_at
+                ),
+            )
+    except IntegrityError:
+        raise AttemptError(_("Сіз бұл сессияда тестті бұрын бастағансыз."))
 
     # Әр сұрақтың жауап нұсқалары: {сұрақ id: [жауап id, ...]}
     answers = {question_id: [] for question_id in question_ids}
@@ -552,3 +562,244 @@ def create_attempt(user, session, language, now=None, rng=None):
         )
     AttemptQuestion.objects.bulk_create(items)
     return attempt
+
+
+# ---------- Тест тапсыру (TZ.md, 3-бөлім, 6-тармақ) ----------
+
+# Жауап нұсқаларының студентке көрінетін әріптері
+ANSWER_LETTERS = "ABCD"
+
+
+def is_expired(attempt, now=None):
+    """Әрекеттің мерзімі өтті ме: deadline сәтінен бастап жауап қабылданбайды."""
+    if now is None:
+        now = timezone.now()
+    return now >= attempt.deadline
+
+
+def remaining_seconds(attempt, now=None):
+    """Мерзімге дейін қалған секундтар (таймер үшін; мерзім өтсе — 0)."""
+    if now is None:
+        now = timezone.now()
+    # Жоғары қарай дөңгелектейміз: таймер сервердегі мерзімнен ерте нөлге жетпеуі үшін
+    return max(0, math.ceil((attempt.deadline - now).total_seconds()))
+
+
+@transaction.atomic
+def finish_attempt(attempt, now=None):
+    """
+    Тестті аяқтайды: балл есептеп (дұрыс = 1, қате немесе бос = 0), күйін
+    «Аяқталды» етеді. Бұрын аяқталған әрекет өзгермейді.
+    Аяқталу уақыты мерзімнен кеш жазылмайды (уақыт біткен соң ашылса да).
+    Қайтарады: жаңартылған әрекет.
+    """
+    if now is None:
+        now = timezone.now()
+    # Жолды құлыптаймыз: бір мезгілде жауап сақталса немесе тест екі рет
+    # аяқталса, балл қате есептелмейді (SQLite бұл құлыпты елемейді)
+    locked = Attempt.objects.select_for_update().get(pk=attempt.pk)
+    if locked.status == Attempt.Status.FINISHED:
+        return locked
+
+    locked.score = locked.items.filter(selected__is_correct=True).count()
+    locked.finished_at = min(now, locked.deadline)
+    locked.status = Attempt.Status.FINISHED
+    locked.save(update_fields=["score", "finished_at", "status"])
+    return locked
+
+
+def finish_if_expired(attempt, now=None):
+    """
+    Мерзімі өткен, бірақ аяқталмаған әрекетті аяқтайды (әрекет кез келген
+    бетте ашылғанда шақырылады). Қайтарады: өзекті әрекет.
+    """
+    if attempt.status == Attempt.Status.IN_PROGRESS and is_expired(attempt, now):
+        return finish_attempt(attempt, now)
+    return attempt
+
+
+def finish_expired_attempts(attempts=None, now=None):
+    """
+    Мерзімі өткен барлық аяқталмаған әрекеттерді аяқтайды (кабинет, оқытушы
+    нәтижелері және `finish_expired` командасы үшін).
+    attempts — тек осы әрекеттер ішінен (мысалы, бір студенттікі).
+    Қайтарады: аяқталған әрекеттер саны.
+    """
+    if now is None:
+        now = timezone.now()
+    if attempts is None:
+        attempts = Attempt.objects.all()
+    expired = attempts.filter(status=Attempt.Status.IN_PROGRESS, deadline__lte=now)
+    count = 0
+    for attempt in expired:
+        finish_attempt(attempt, now)
+        count += 1
+    return count
+
+
+@transaction.atomic
+def save_answer(item, answer_id, now=None):
+    """
+    Студенттің жауабын сақтайды (аяқталғанға дейін өзгертуге болады).
+    answer_id — осы сұрақтың нұсқаларының бірі (forms.py тексереді).
+    Тест аяқталса немесе мерзімі өтсе, жауап қабылданбайды — онда False қайтарады.
+    """
+    if now is None:
+        now = timezone.now()
+    attempt = Attempt.objects.select_for_update().get(pk=item.attempt_id)
+    if attempt.status != Attempt.Status.IN_PROGRESS or is_expired(attempt, now):
+        return False
+    item.selected_id = answer_id
+    item.save(update_fields=["selected"])
+    return True
+
+
+def first_unanswered_number(attempt):
+    """Жауап берілмеген бірінші сұрақтың нөмірі (бәріне жауап берілсе — 1)."""
+    item = attempt.items.filter(selected__isnull=True).order_by("order").first()
+    return item.order if item else 1
+
+
+def unanswered_numbers(attempt):
+    """Жауап берілмеген сұрақтардың нөмірлері (аяқтауды растау беті үшін)."""
+    return list(
+        attempt.items.filter(selected__isnull=True)
+        .order_by("order")
+        .values_list("order", flat=True)
+    )
+
+
+def ordered_answers(item, answers_by_id):
+    """
+    Сұрақтың жауап нұсқалары студентке көрсетілген ретпен:
+    [{"letter": "A", "answer": Answer}, ...].
+    """
+    return [
+        {"letter": ANSWER_LETTERS[index], "answer": answers_by_id[answer_id]}
+        for index, answer_id in enumerate(item.answer_order)
+    ]
+
+
+def question_page_data(attempt, item, now=None):
+    """
+    Сұрақ бетіне керек деректер: 1–50 навигация (жауап берілгені белгіленеді),
+    жауап нұсқалары, алдыңғы/келесі нөмірлер, жауап берілмегендер саны, қалған уақыт.
+    Нұсқалардың тек id-і мен мәтіні беріледі: is_correct шаблонға жетпейді.
+    """
+    navigation = list(attempt.items.order_by("order").values_list("order", "selected_id"))
+    answers_by_id = Answer.objects.in_bulk(item.answer_order)
+    answers = [
+        {"letter": row["letter"], "id": row["answer"].pk, "text": row["answer"].text}
+        for row in ordered_answers(item, answers_by_id)
+    ]
+    total = len(navigation)
+    return {
+        "navigation": [
+            {"number": order, "answered": selected_id is not None}
+            for order, selected_id in navigation
+        ],
+        "answers": answers,
+        "previous_number": item.order - 1 if item.order > 1 else None,
+        "next_number": item.order + 1 if item.order < total else None,
+        "unanswered_count": sum(1 for _order, selected_id in navigation if selected_id is None),
+        "total": total,
+        "remaining_seconds": remaining_seconds(attempt, now),
+    }
+
+
+# ---------- Нәтиже (TZ.md, 3-бөлім, 7-тармақ) ----------
+
+
+def can_see_answers(attempt, user, now=None):
+    """
+    Әр сұрақтың дұрыс жауабын көрсетуге бола ма. Оқытушыға — әрқашан.
+    Студентке — тек тест аяқталған соң, сессия баптауына қарай:
+    аяқтаған бойда немесе сессия жабылғаннан кейін.
+    """
+    if user.is_staff:
+        return True
+    if attempt.status != Attempt.Status.FINISHED:
+        return False
+    if attempt.session.show_answers == ExamSession.ShowAnswers.AFTER_CLOSE:
+        if now is None:
+            now = timezone.now()
+        return now >= attempt.session.closes_at
+    return True
+
+
+def percent(correct, total):
+    """Дұрыс жауаптар пайызы (бүтін сан)."""
+    return round(correct * 100 / total) if total else 0
+
+
+def attempt_result(attempt, with_answers):
+    """
+    Әрекеттің нәтижесі: балл, пайыз, жұмсалған уақыт, A/B/C деңгейлері және
+    11 тақырып бойынша дұрыс жауаптар кестесі.
+    with_answers=True болса — әр сұрақтың студент жауабы мен дұрыс жауабы да.
+    """
+    items = list(
+        attempt.items.select_related(
+            "question__subtopic__topic", "question__context", "selected"
+        ).order_by("order")
+    )
+    total = len(items)
+    correct_items = [item for item in items if item.selected and item.selected.is_correct]
+    score = len(correct_items)
+
+    # Деңгей бойынша: A, B, C
+    level_total = Counter(item.question.level for item in items)
+    level_correct = Counter(item.question.level for item in correct_items)
+    levels = [
+        {
+            "label": label,
+            "correct": level_correct[level],
+            "total": level_total[level],
+            "percent": percent(level_correct[level], level_total[level]),
+        }
+        for level, label in Level.choices
+    ]
+
+    # Тақырып бойынша: 11 тақырыптың бәрі
+    topic_total = Counter(item.question.subtopic.topic_id for item in items)
+    topic_correct = Counter(item.question.subtopic.topic_id for item in correct_items)
+    topics = [
+        {
+            "topic": topic,
+            "correct": topic_correct[topic.pk],
+            "total": topic_total[topic.pk],
+            "percent": percent(topic_correct[topic.pk], topic_total[topic.pk]),
+        }
+        for topic in Topic.objects.all()
+    ]
+
+    spent_seconds = 0
+    if attempt.finished_at:
+        spent_seconds = int((attempt.finished_at - attempt.started_at).total_seconds())
+    spent_minutes, spent_rest = divmod(spent_seconds, 60)
+
+    questions = []
+    if with_answers:
+        answer_ids = [answer_id for item in items for answer_id in item.answer_order]
+        answers_by_id = Answer.objects.in_bulk(answer_ids)
+        for item in items:
+            questions.append(
+                {
+                    "number": item.order,
+                    "question": item.question,
+                    "answers": ordered_answers(item, answers_by_id),
+                    "selected_id": item.selected_id,
+                    "is_correct": bool(item.selected and item.selected.is_correct),
+                }
+            )
+
+    return {
+        "score": score,
+        "total": total,
+        "percent": percent(score, total),
+        "spent_minutes": spent_minutes,
+        "spent_seconds": spent_rest,
+        "levels": levels,
+        "topics": topics,
+        "questions": questions,
+    }

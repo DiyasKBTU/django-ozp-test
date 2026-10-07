@@ -20,6 +20,7 @@
                         </div>
                         {% if row.attempt.status == "finished" %}
                             <span class="badge text-bg-secondary">{% translate "Тапсырылды" %}</span>
+                            <a class="btn btn-sm btn-outline-primary ms-1" href="{% url 'quiz:attempt_result' row.attempt.pk %}">{% translate "Нәтиже" %}</a>
                         {% elif row.attempt %}
                             <a class="btn btn-sm btn-warning" href="{% url 'quiz:session_start' row.session.pk %}">{% translate "Жалғастыру" %}</a>
                         {% else %}
@@ -72,7 +73,9 @@
                         <div class="small text-muted">
                             {{ row.session.opens_at|date:"d.m.Y, H:i" }} – {{ row.session.closes_at|date:"d.m.Y, H:i" }}
                         </div>
-                        {% if not row.attempt %}
+                        {% if row.attempt %}
+                            <a class="btn btn-sm btn-outline-primary mt-1" href="{% url 'quiz:attempt_result' row.attempt.pk %}">{% translate "Нәтиже" %}</a>
+                        {% else %}
                             <span class="badge text-bg-light border">{% translate "Тапсырылмады" %}</span>
                         {% endif %}
                     </li>
@@ -95,6 +98,7 @@
                     <th>{% translate "Сессия" %}</th>
                     <th>{% translate "Тест тілі" %}</th>
                     <th>{% translate "Балы" %}</th>
+                    <th></th>
                 </tr>
             </thead>
             <tbody>
@@ -108,6 +112,13 @@
                                 <strong>{{ attempt.score|default:0 }} / {{ questions_total }}</strong>
                             {% else %}
                                 <span class="badge text-bg-warning">{{ attempt.get_status_display }}</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-end">
+                            {% if attempt.status == "finished" %}
+                                <a class="btn btn-sm btn-outline-primary" href="{% url 'quiz:attempt_result' attempt.pk %}">{% translate "Нәтиже" %}</a>
+                            {% else %}
+                                <a class="btn btn-sm btn-warning" href="{% url 'quiz:session_start' attempt.session_id %}">{% translate "Жалғастыру" %}</a>
                             {% endif %}
                         </td>
                     </tr>

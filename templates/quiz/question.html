@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% load i18n static %}
+
+{% block title %}{% blocktranslate with number=item.order %}{{ number }}-сұрақ{% endblocktranslate %}{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-wrap align-items-center gap-3 mb-3">
+    <div class="me-auto">
+        <h1 class="h5 mb-1">{{ attempt.session.title }}</h1>
+        <div class="small text-muted">
+            {% blocktranslate %}Жауап берілмеген сұрақтар: {{ unanswered_count }} / {{ total }}{% endblocktranslate %}
+        </div>
+    </div>
+    {% include "quiz/_timer.html" %}
+</div>
+
+{# 1–50 навигация: жауап берілгені боялады, ағымдағысы белгіленеді #}
+<nav class="d-flex flex-wrap gap-1 mb-4" aria-label="{% translate 'Сұрақтар' %}">
+    {% for cell in navigation %}
+        <a href="{% url 'quiz:attempt_question' attempt.pk cell.number %}"
+           class="btn btn-sm {% if cell.answered %}btn-primary{% else %}btn-outline-secondary{% endif %}{% if cell.number == item.order %} border-3 border-warning fw-bold{% endif %}"
+           style="min-width: 2.6rem"
+           {% if cell.number == item.order %}aria-current="page"{% endif %}>{{ cell.number }}</a>
+    {% endfor %}
+</nav>
+
+<div class="bg-white rounded shadow-sm p-4 mb-3">
+    <div class="text-muted small mb-2">{% blocktranslate with number=item.order %}{{ number }}-сұрақ{% endblocktranslate %}</div>
+    {% include "quiz/_question_head.html" %}
+
+    {# Жауап таңдалған сәтте форма автоматты жіберіледі; JS жоқ болса — «Сақтау» батырмасы #}
+    <form method="post">
+        {% csrf_token %}
+        <div class="list-group mb-3">
+            {% for answer in answers %}
+                <label class="list-group-item list-group-item-action d-flex gap-2{% if answer.id == item.selected_id %} active{% endif %}">
+                    <input class="form-check-input flex-shrink-0 mt-1" type="radio" name="answer" value="{{ answer.id }}"
+                           onchange="this.form.submit()"
+                           {% if answer.id == item.selected_id %}checked{% endif %}>
+                    <span class="fw-semibold">{{ answer.letter }})</span>
+                    <pre class="answer-text flex-grow-1">{{ answer.text }}</pre>
+                </label>
+            {% endfor %}
+        </div>
+        <noscript>
+            <button type="submit" class="btn btn-primary mb-3">{% translate "Сақтау" %}</button>
+        </noscript>
+    </form>
+    {% if item.selected_id %}
+        <div class="small text-success">{% translate "Жауабыңыз сақталды. Аяқтағанға дейін өзгертуге болады." %}</div>
+    {% endif %}
+</div>
+
+<div class="d-flex flex-wrap gap-2">
+    {% if previous_number %}
+        <a class="btn btn-outline-primary" href="{% url 'quiz:attempt_question' attempt.pk previous_number %}">&larr; {% translate "Алдыңғы" %}</a>
+    {% endif %}
+    {% if next_number %}
+        <a class="btn btn-outline-primary" href="{% url 'quiz:attempt_question' attempt.pk next_number %}">{% translate "Келесі" %} &rarr;</a>
+    {% endif %}
+    <a class="btn btn-danger ms-auto" href="{% url 'quiz:attempt_finish' attempt.pk %}">{% translate "Тестті аяқтау" %}</a>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{% static 'js/timer.js' %}"></script>
+{% endblock %}

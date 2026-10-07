@@ -9,6 +9,17 @@ urlpatterns = [
     # ---------- Студент беттері ----------
     path("dashboard/", views.dashboard, name="dashboard"),
     path("session/<int:session_id>/start/", views.session_start, name="session_start"),
+    path(
+        "test/<int:attempt_id>/q/<int:number>/",
+        views.attempt_question,
+        name="attempt_question",
+    ),
+    path("test/<int:attempt_id>/finish/", views.attempt_finish, name="attempt_finish"),
+    path(
+        "test/<int:attempt_id>/result/",
+        views.attempt_result_page,
+        name="attempt_result",
+    ),
     # ---------- Оқытушы беттері ----------
     path("teacher/questions/", teacher_views.question_list, name="teacher_questions"),
     path(

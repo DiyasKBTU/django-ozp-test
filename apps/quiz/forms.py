@@ -316,6 +316,36 @@ class ContextForm(forms.ModelForm):
         return language
 
 
+# ---------- Тест тапсыру (студент) ----------
+
+
+class StartAttemptForm(forms.Form):
+    """Тестті бастау: тест тілін таңдау (50 сұрақтың бәрі сол тілде болады)."""
+
+    language = forms.ChoiceField(
+        label=_("Тест тілі"), choices=Language.choices, widget=forms.RadioSelect
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        add_bootstrap_classes(self)
+
+
+class AttemptAnswerForm(forms.Form):
+    """
+    Сұраққа жауап: таңдалған нұсқа тек осы сұрақтың 4 нұсқасының бірі бола алады
+    (бөтен сұрақтың жауабын жіберуге болмайды).
+    """
+
+    answer = forms.TypedChoiceField(coerce=int)
+
+    def __init__(self, item, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["answer"].choices = [
+            (answer_id, answer_id) for answer_id in item.answer_order
+        ]
+
+
 # ---------- Сұрақтар тізімінің сүзгісі ----------
 
 

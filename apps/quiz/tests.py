@@ -47,8 +47,13 @@ from .services import (
     AttemptError,
     bank_coverage,
     build_variant,
+    can_see_answers,
     create_attempt,
     dashboard_sessions,
+    finish_attempt,
+    finish_expired_attempts,
+    remaining_seconds,
+    save_answer,
     split_duration,
     visible_sessions,
 )
@@ -1275,3 +1280,484 @@ class TranslationTests(StudentTestCase):
         # makemessages ұқсас жолдан «болжап» қойған (fuzzy) аудармалар компиляцияланбайды
         fuzzy = [entry for entry in entries if "fuzzy" in entry]
         self.assertEqual(fuzzy, [])
+
+
+# ---------- 5-кезең: тест тапсыру, таймер, нәтиже ----------
+
+
+class TakeTestCase(VariantTestCase):
+    """Демо банк, ашық сессия және кірген студент."""
+
+    def setUp(self):
+        self.student = User.objects.create_user(
+            username="student", password="pass12345", first_name="Асқар"
+        )
+        self.client.force_login(self.student)
+        self.session = make_session(title="Күзгі сынақ")
+
+    def start(self, language="kk"):
+        """«Бастау» батырмасы: POST /session/<id>/start/."""
+        return self.client.post(
+            reverse("quiz:session_start", args=[self.session.pk]), {"language": language}
+        )
+
+    def new_attempt(self, user=None, session=None):
+        return create_attempt(user or self.student, session or self.session, "kk")
+
+    def question_url(self, attempt, number):
+        return reverse("quiz:attempt_question", args=[attempt.pk, number])
+
+    def answer(self, attempt, number, answer_id):
+        return self.client.post(self.question_url(attempt, number), {"answer": answer_id})
+
+    def correct_answer(self, item):
+        return item.question.answers.get(is_correct=True)
+
+    def wrong_answer(self, item):
+        return item.question.answers.filter(is_correct=False).first()
+
+    def expire(self, attempt):
+        """Мерзімді өткізіп жібереді (тест әлі аяқталмаған)."""
+        attempt.deadline = timezone.now() - timedelta(seconds=1)
+        attempt.save(update_fields=["deadline"])
+
+
+class StartTestPageTests(TakeTestCase):
+    def test_start_page_shows_rules_and_language_choice(self):
+        response = self.client.get(reverse("quiz:session_start", args=[self.session.pk]))
+        self.assertContains(response, 'id="id_language_0"')
+        self.assertContains(response, 'id="id_language_1"')
+        self.assertContains(response, f"Сұрақтар саны: {QUESTIONS_TOTAL}")
+        self.assertContains(response, f"{TEST_DURATION_MINUTES} минут")
+        self.assertContains(response, timezone.localtime(self.session.closes_at).strftime("%d.%m.%Y, %H:%M"))
+
+    def test_start_creates_attempt_in_chosen_language(self):
+        response = self.start("ru")
+        attempt = Attempt.objects.get(user=self.student, session=self.session)
+        self.assertRedirects(response, self.question_url(attempt, 1))
+        self.assertEqual(attempt.language, "ru")
+        self.assertEqual(attempt.items.count(), QUESTIONS_TOTAL)
+        self.assertFalse(attempt.items.exclude(question__language="ru").exists())
+
+    def test_second_start_does_not_create_new_attempt(self):
+        self.start()
+        attempt = Attempt.objects.get(user=self.student)
+        item = attempt.items.get(order=1)
+        self.answer(attempt, 1, self.correct_answer(item).pk)
+
+        # Қайта «Бастау»: жаңа әрекет жоқ, жауап берілмеген бірінші сұраққа қайтады
+        for response in [
+            self.start("ru"),
+            self.client.get(reverse("quiz:session_start", args=[self.session.pk])),
+        ]:
+            self.assertRedirects(response, self.question_url(attempt, 2))
+        self.assertEqual(Attempt.objects.filter(user=self.student).count(), 1)
+        attempt.refresh_from_db()
+        self.assertEqual(attempt.language, "kk")
+
+    def test_finished_attempt_redirects_to_result(self):
+        attempt = self.new_attempt()
+        finish_attempt(attempt)
+        response = self.start()
+        self.assertRedirects(response, reverse("quiz:attempt_result", args=[attempt.pk]))
+        self.assertEqual(Attempt.objects.count(), 1)
+
+    def test_closed_session_cannot_be_started(self):
+        now = timezone.now()
+        self.session.opens_at = now - timedelta(hours=3)
+        self.session.closes_at = now - timedelta(minutes=1)
+        self.session.save()
+        response = self.start()
+        self.assertRedirects(response, reverse("quiz:session_start", args=[self.session.pk]))
+        self.assertFalse(Attempt.objects.exists())
+        response = self.client.get(response["Location"])
+        self.assertContains(response, "Бұл сессия қазір ашық емес.")
+        self.assertNotContains(response, 'id="id_language_0"')
+
+    def test_bank_error_is_shown(self):
+        Question.objects.filter(language="ru").update(is_active=False)
+        response = self.start("ru")
+        self.assertFalse(Attempt.objects.exists())
+        self.assertContains(self.client.get(response["Location"]), "жеткіліксіз")
+
+
+class QuestionPageTests(TakeTestCase):
+    def setUp(self):
+        super().setUp()
+        self.attempt = self.new_attempt()
+
+    def test_question_page_shows_question_navigation_and_timer(self):
+        item = self.attempt.items.get(order=41)
+        response = self.client.get(self.question_url(self.attempt, 41))
+        self.assertEqual(response.status_code, 200)
+        # Контекст мәтіні сұрақтың үстінде
+        content = response.content.decode()
+        self.assertIn(escape(item.question.context.title), content)
+        self.assertLess(
+            content.index(escape(item.question.context.title)),
+            content.index('name="answer"'),
+        )
+        # 1–50 навигация, алдыңғы/келесі
+        for number in [1, 40, 42, 50]:
+            self.assertContains(response, f'href="{self.question_url(self.attempt, number)}"')
+        self.assertContains(response, 'aria-current="page"', count=1)
+        # Таймер: қалған уақыт сервердегі мерзімнен
+        remaining = response.context["remaining_seconds"]
+        self.assertTrue(TEST_DURATION_MINUTES * 60 - 5 <= remaining <= TEST_DURATION_MINUTES * 60)
+        self.assertContains(response, f'data-remaining="{remaining}"')
+        self.assertContains(response, reverse("quiz:attempt_finish", args=[self.attempt.pk]))
+        self.assertContains(response, "js/timer.js")
+
+    def test_answers_are_shown_in_shuffled_order(self):
+        item = self.attempt.items.get(order=1)
+        response = self.client.get(self.question_url(self.attempt, 1))
+        ids = [answer["id"] for answer in response.context["answers"]]
+        self.assertEqual(ids, item.answer_order)
+        self.assertEqual(
+            [answer["letter"] for answer in response.context["answers"]], ["A", "B", "C", "D"]
+        )
+
+    def test_code_indentation_is_kept_in_pre(self):
+        item = self.attempt.items.get(order=7)
+        code = "for i in range(3):\n    if i > 0:\n        print(i)"
+        Question.objects.filter(pk=item.question_id).update(code=code)
+        response = self.client.get(self.question_url(self.attempt, 7))
+        self.assertContains(response, f'<pre class="code-block">{escape(code)}</pre>')
+
+    def test_correct_answer_is_not_in_html(self):
+        for number in [1, 25, 45]:
+            with self.subTest(number=number):
+                response = self.client.get(self.question_url(self.attempt, number))
+                self.assertNotContains(response, "is_correct")
+                self.assertNotContains(response, "list-group-item-success")
+                self.assertNotContains(response, "дұрыс</span>")
+                # Шаблонға тек мәтін мен id жетеді
+                for answer in response.context["answers"]:
+                    self.assertEqual(set(answer), {"letter", "id", "text"})
+        # Аяқтау беті де дұрыс жауапты көрсетпейді
+        response = self.client.get(reverse("quiz:attempt_finish", args=[self.attempt.pk]))
+        self.assertNotContains(response, "list-group-item-success")
+
+    def test_answer_is_saved_and_can_be_changed(self):
+        item = self.attempt.items.get(order=3)
+        wrong, correct = self.wrong_answer(item), self.correct_answer(item)
+
+        response = self.answer(self.attempt, 3, wrong.pk)
+        self.assertRedirects(response, self.question_url(self.attempt, 3))
+        item.refresh_from_db()
+        self.assertEqual(item.selected, wrong)
+
+        self.answer(self.attempt, 3, correct.pk)
+        item.refresh_from_db()
+        self.assertEqual(item.selected, correct)
+
+        # Бет қайта ашылса, таңдау сақталған, навигацияда боялған
+        response = self.client.get(self.question_url(self.attempt, 3))
+        self.assertRegex(
+            response.content.decode(),
+            rf'value="{correct.pk}"\s+onchange="this.form.submit\(\)"\s+checked',
+        )
+        answered = [cell["number"] for cell in response.context["navigation"] if cell["answered"]]
+        self.assertEqual(answered, [3])
+
+    def test_answer_from_other_question_is_rejected(self):
+        other_item = self.attempt.items.get(order=2)
+        response = self.answer(self.attempt, 1, self.correct_answer(other_item).pk)
+        self.assertRedirects(response, self.question_url(self.attempt, 1))
+        self.assertIsNone(self.attempt.items.get(order=1).selected)
+        for value in ["", "abc"]:
+            self.answer(self.attempt, 1, value)
+        self.assertIsNone(self.attempt.items.get(order=1).selected)
+
+    def test_unknown_question_number_is_404(self):
+        for number in [0, QUESTIONS_TOTAL + 1]:
+            with self.subTest(number=number):
+                response = self.client.get(self.question_url(self.attempt, number))
+                self.assertEqual(response.status_code, 404)
+
+    def test_finished_attempt_answers_cannot_change(self):
+        item = self.attempt.items.get(order=1)
+        finish_attempt(self.attempt)
+        response = self.answer(self.attempt, 1, self.correct_answer(item).pk)
+        self.assertRedirects(response, reverse("quiz:attempt_result", args=[self.attempt.pk]))
+        item.refresh_from_db()
+        self.assertIsNone(item.selected)
+
+
+class DeadlineTests(TakeTestCase):
+    def setUp(self):
+        super().setUp()
+        self.attempt = self.new_attempt()
+        self.item = self.attempt.items.get(order=1)
+
+    def test_answer_after_deadline_is_rejected(self):
+        self.expire(self.attempt)
+        response = self.answer(self.attempt, 1, self.correct_answer(self.item).pk)
+        self.assertRedirects(response, reverse("quiz:attempt_result", args=[self.attempt.pk]))
+        self.item.refresh_from_db()
+        self.assertIsNone(self.item.selected)
+        self.attempt.refresh_from_db()
+        self.assertEqual(self.attempt.status, Attempt.Status.FINISHED)
+        self.assertEqual(self.attempt.score, 0)
+
+    def test_save_answer_checks_deadline_on_server(self):
+        answer = self.correct_answer(self.item)
+        second = timedelta(seconds=1)
+        self.assertTrue(save_answer(self.item, answer.pk, now=self.attempt.deadline - second))
+        self.assertFalse(save_answer(self.item, answer.pk, now=self.attempt.deadline))
+        self.assertFalse(save_answer(self.item, answer.pk, now=self.attempt.deadline + second))
+
+    def test_expired_attempt_is_finished_when_opened(self):
+        self.item.selected = self.correct_answer(self.item)
+        self.item.save()
+        result_url = reverse("quiz:attempt_result", args=[self.attempt.pk])
+        urls = [
+            self.question_url(self.attempt, 5),
+            reverse("quiz:attempt_finish", args=[self.attempt.pk]),
+            reverse("quiz:session_start", args=[self.session.pk]),
+            result_url,
+        ]
+        for url in urls:
+            with self.subTest(url=url):
+                Attempt.objects.filter(pk=self.attempt.pk).update(
+                    status=Attempt.Status.IN_PROGRESS, score=None, finished_at=None
+                )
+                self.expire(self.attempt)
+                response = self.client.get(url)
+                if url != result_url:
+                    self.assertRedirects(response, result_url)
+                self.attempt.refresh_from_db()
+                self.assertEqual(self.attempt.status, Attempt.Status.FINISHED)
+                self.assertEqual(self.attempt.score, 1)
+                # Аяқталу уақыты — мерзім, кейін ашылған уақыт емес
+                self.assertEqual(self.attempt.finished_at, self.attempt.deadline)
+
+    def test_dashboard_finishes_expired_attempts(self):
+        self.expire(self.attempt)
+        response = self.client.get(reverse("quiz:dashboard"))
+        self.attempt.refresh_from_db()
+        self.assertEqual(self.attempt.status, Attempt.Status.FINISHED)
+        self.assertContains(response, f"0 / {QUESTIONS_TOTAL}")
+        self.assertContains(response, reverse("quiz:attempt_result", args=[self.attempt.pk]))
+
+    def test_teacher_sees_expired_attempt_as_finished(self):
+        self.expire(self.attempt)
+        teacher = User.objects.create_user(username="teacher", password="pass12345", is_staff=True)
+        self.client.force_login(teacher)
+        response = self.client.get(reverse("quiz:attempt_result", args=[self.attempt.pk]))
+        self.assertContains(response, f"0 / {QUESTIONS_TOTAL}")
+        self.attempt.refresh_from_db()
+        self.assertEqual(self.attempt.status, Attempt.Status.FINISHED)
+
+    def test_finish_expired_command(self):
+        other = User.objects.create_user(username="other", password="pass12345")
+        running = self.new_attempt(user=other)
+        self.expire(self.attempt)
+
+        out = StringIO()
+        call_command("finish_expired", stdout=out)
+        self.assertIn("Аяқталған әрекеттер: 1", out.getvalue())
+        self.attempt.refresh_from_db()
+        running.refresh_from_db()
+        self.assertEqual(self.attempt.status, Attempt.Status.FINISHED)
+        self.assertEqual(running.status, Attempt.Status.IN_PROGRESS)
+        self.assertEqual(finish_expired_attempts(), 0)
+
+    def test_timer_never_shows_negative(self):
+        self.assertEqual(
+            remaining_seconds(self.attempt, now=self.attempt.deadline + timedelta(minutes=1)), 0
+        )
+        self.assertEqual(
+            remaining_seconds(self.attempt, now=self.attempt.deadline - timedelta(seconds=1.5)), 2
+        )
+
+
+class FinishAndResultTests(TakeTestCase):
+    def test_full_path_start_answer_finish_result(self):
+        # Бастау
+        response = self.start("kk")
+        attempt = Attempt.objects.get(user=self.student)
+        self.assertRedirects(response, self.question_url(attempt, 1))
+
+        # Жауаптар: 1–3 дұрыс, 4 қате, қалғаны бос
+        for number in [1, 2, 3]:
+            item = attempt.items.get(order=number)
+            self.answer(attempt, number, self.correct_answer(item).pk)
+        self.answer(attempt, 4, self.wrong_answer(attempt.items.get(order=4)).pk)
+
+        # Аяқтау: растау беті жауап берілмегендер санын көрсетеді
+        finish_url = reverse("quiz:attempt_finish", args=[attempt.pk])
+        response = self.client.get(finish_url)
+        self.assertContains(response, f"Жауап берілмеген сұрақтар саны: <strong>{QUESTIONS_TOTAL - 4}</strong>")
+        self.assertEqual(response.context["unanswered"], list(range(5, QUESTIONS_TOTAL + 1)))
+        attempt.refresh_from_db()
+        self.assertEqual(attempt.status, Attempt.Status.IN_PROGRESS)
+
+        response = self.client.post(finish_url)
+        result_url = reverse("quiz:attempt_result", args=[attempt.pk])
+        self.assertRedirects(response, result_url)
+        attempt.refresh_from_db()
+        self.assertEqual(attempt.status, Attempt.Status.FINISHED)
+        self.assertEqual(attempt.score, 3)
+        self.assertIsNotNone(attempt.finished_at)
+
+        # Нәтиже
+        response = self.client.get(result_url)
+        self.assertContains(response, f"3 / {QUESTIONS_TOTAL}")
+        self.assertContains(response, "6%")
+        result = response.context["result"]
+        self.assertEqual(result["score"], 3)
+        self.assertEqual(sum(row["total"] for row in result["levels"]), QUESTIONS_TOTAL)
+        self.assertEqual(
+            [row["total"] for row in result["levels"]], [LEVEL_QUOTA[level] for level in "ABC"]
+        )
+        self.assertEqual(sum(row["correct"] for row in result["levels"]), 3)
+        self.assertEqual(len(result["topics"]), 11)
+        self.assertEqual(sum(row["total"] for row in result["topics"]), QUESTIONS_TOTAL)
+        self.assertEqual(sum(row["correct"] for row in result["topics"]), 3)
+        self.assertEqual(len(result["questions"]), QUESTIONS_TOTAL)
+
+        # Аяқталған тестке қайта кірсе — нәтиже беті; жауап өзгермейді
+        self.assertRedirects(self.client.get(self.question_url(attempt, 1)), result_url)
+        self.assertRedirects(self.client.post(finish_url), result_url)
+        attempt.refresh_from_db()
+        self.assertEqual(attempt.score, 3)
+
+        # Кабинетте балы көрінеді
+        self.assertContains(self.client.get(reverse("quiz:dashboard")), f"3 / {QUESTIONS_TOTAL}")
+
+    def test_spent_time(self):
+        attempt = self.new_attempt()
+        finish_attempt(attempt, now=attempt.started_at + timedelta(minutes=42, seconds=7))
+        response = self.client.get(reverse("quiz:attempt_result", args=[attempt.pk]))
+        self.assertContains(response, "42 мин 7 с")
+
+    def test_finish_all_answered(self):
+        attempt = self.new_attempt()
+        for item in attempt.items.all():
+            item.selected = self.correct_answer(item)
+            item.save()
+        response = self.client.get(reverse("quiz:attempt_finish", args=[attempt.pk]))
+        self.assertContains(response, "Барлық сұраққа жауап бердіңіз.")
+        self.assertEqual(finish_attempt(attempt).score, QUESTIONS_TOTAL)
+
+    def test_unfinished_result_redirects_student_to_test(self):
+        attempt = self.new_attempt()
+        response = self.client.get(reverse("quiz:attempt_result", args=[attempt.pk]))
+        self.assertRedirects(response, self.question_url(attempt, 1))
+
+    def test_result_page_in_russian(self):
+        attempt = self.new_attempt()
+        finish_attempt(attempt)
+        self.client.cookies["django_language"] = "ru"
+        response = self.client.get(reverse("quiz:attempt_result", args=[attempt.pk]))
+        self.assertContains(response, "Результат теста")
+        self.assertNotContains(response, "Тест нәтижесі")
+
+
+class ShowAnswersTests(TakeTestCase):
+    def setUp(self):
+        super().setUp()
+        self.attempt = self.new_attempt()
+        self.item = self.attempt.items.get(order=1)
+        self.wrong = self.wrong_answer(self.item)
+        self.item.selected = self.wrong
+        self.item.save()
+        self.attempt = finish_attempt(self.attempt)
+        self.result_url = reverse("quiz:attempt_result", args=[self.attempt.pk])
+
+    def assert_answers_shown(self, response):
+        self.assertTrue(response.context["show_answers"])
+        self.assertContains(response, "таңдалған жауап", count=1)
+        self.assertContains(response, "list-group-item-success", count=QUESTIONS_TOTAL)
+        self.assertContains(response, "list-group-item-danger", count=1)
+
+    def assert_answers_hidden(self, response):
+        self.assertFalse(response.context["show_answers"])
+        self.assertEqual(response.context["result"]["questions"], [])
+        self.assertNotContains(response, "list-group-item-success")
+        self.assertNotContains(response, "таңдалған жауап")
+        self.assertContains(response, "Дұрыс жауаптар сессия жабылғаннан кейін")
+
+    def test_after_finish(self):
+        self.assert_answers_shown(self.client.get(self.result_url))
+
+    def test_after_close(self):
+        self.session.show_answers = ExamSession.ShowAnswers.AFTER_CLOSE
+        self.session.save()
+        response = self.client.get(self.result_url)
+        self.assert_answers_hidden(response)
+        # Балл мен талдау бәрібір көрінеді
+        self.assertContains(response, f"0 / {QUESTIONS_TOTAL}")
+
+        # Сессия жабылғаннан кейін — көрінеді
+        self.session.closes_at = timezone.now() - timedelta(seconds=1)
+        self.session.save()
+        self.assert_answers_shown(self.client.get(self.result_url))
+
+    def test_teacher_always_sees_answers(self):
+        self.session.show_answers = ExamSession.ShowAnswers.AFTER_CLOSE
+        self.session.save()
+        teacher = User.objects.create_user(username="teacher", password="pass12345", is_staff=True)
+        self.client.force_login(teacher)
+        response = self.client.get(self.result_url)
+        self.assert_answers_shown(response)
+        self.assertContains(response, "Асқар")
+
+    def test_can_see_answers_rules(self):
+        self.attempt.session = self.session
+        self.session.show_answers = ExamSession.ShowAnswers.AFTER_CLOSE
+        closes = self.session.closes_at
+        self.assertFalse(can_see_answers(self.attempt, self.student, now=closes - timedelta(seconds=1)))
+        self.assertTrue(can_see_answers(self.attempt, self.student, now=closes))
+        # Аяқталмаған тестте — ешқашан
+        self.session.show_answers = ExamSession.ShowAnswers.AFTER_FINISH
+        running = Attempt(session=self.session, status=Attempt.Status.IN_PROGRESS)
+        self.assertFalse(can_see_answers(running, self.student))
+
+
+class AttemptAccessTests(TakeTestCase):
+    def setUp(self):
+        super().setUp()
+        other = User.objects.create_user(username="other", password="pass12345")
+        self.foreign = self.new_attempt(user=other)
+
+    def test_foreign_attempt_is_404(self):
+        urls = [
+            reverse("quiz:attempt_question", args=[self.foreign.pk, 1]),
+            reverse("quiz:attempt_finish", args=[self.foreign.pk]),
+            reverse("quiz:attempt_result", args=[self.foreign.pk]),
+        ]
+        for url in urls:
+            with self.subTest(url=url):
+                self.assertEqual(self.client.get(url).status_code, 404)
+                self.assertEqual(self.client.post(url, {"answer": 1}).status_code, 404)
+        # Бөтен тест өзгермеді
+        self.foreign.refresh_from_db()
+        self.assertEqual(self.foreign.status, Attempt.Status.IN_PROGRESS)
+        self.assertFalse(self.foreign.items.filter(selected__isnull=False).exists())
+
+        finish_attempt(self.foreign)
+        url = reverse("quiz:attempt_result", args=[self.foreign.pk])
+        self.assertEqual(self.client.get(url).status_code, 404)
+
+    def test_guest_is_redirected_to_login(self):
+        self.client.logout()
+        response = self.client.get(reverse("quiz:attempt_result", args=[self.foreign.pk]))
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(reverse("accounts:login"), response["Location"])
+
+    def test_teacher_can_see_any_result(self):
+        teacher = User.objects.create_user(username="teacher", password="pass12345", is_staff=True)
+        self.client.force_login(teacher)
+        url = reverse("quiz:attempt_result", args=[self.foreign.pk])
+        # Аяқталмаған тест — тек хабарлама
+        response = self.client.get(url)
+        self.assertContains(response, "Тест әлі аяқталмаған")
+        self.assertNotContains(response, "list-group-item-success")
+
+        finish_attempt(self.foreign)
+        self.assertContains(self.client.get(url), f"0 / {QUESTIONS_TOTAL}")
+        # Бірақ бөтен тестке жауап бере алмайды
+        question_url = reverse("quiz:attempt_question", args=[self.foreign.pk, 1])
+        self.assertEqual(self.client.get(question_url).status_code, 404)

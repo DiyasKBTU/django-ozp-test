@@ -1,0 +1,10 @@
+{% load i18n %}
+{# Таймер: қалған уақытты сервер береді, timer.js кері санайды. JS жоқ болса — мерзім уақыты. #}
+<div class="text-end">
+    <div class="small text-muted">{% translate "Қалған уақыт" %}</div>
+    <div id="timer" class="fs-4 fw-semibold font-monospace"
+         data-remaining="{{ remaining_seconds }}"
+         data-finish-url="{% url 'quiz:attempt_finish' attempt.pk %}">
+        {% blocktranslate with deadline=attempt.deadline|date:"H:i" %}{{ deadline }} дейін{% endblocktranslate %}
+    </div>
+</div>

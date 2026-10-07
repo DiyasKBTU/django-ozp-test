@@ -1,0 +1,158 @@
+{% extends "base.html" %}
+{% load i18n %}
+
+{% block title %}{% translate "Тест нәтижесі" %}{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+    <div class="me-auto">
+        <h1 class="h4 mb-1">{% translate "Тест нәтижесі" %}</h1>
+        <div class="text-muted small">
+            {{ attempt.session.title }} · {{ attempt.get_language_display }}
+            {% if attempt.user_id != user.pk %}· {{ attempt.user.get_full_name|default:attempt.user.username }}{% endif %}
+        </div>
+    </div>
+    {% if user.is_staff %}
+        <a class="btn btn-sm btn-outline-secondary" href="{% url 'admin:quiz_attempt_changelist' %}">{% translate "Барлық әрекеттер" %}</a>
+    {% else %}
+        <a class="btn btn-sm btn-outline-secondary" href="{% url 'quiz:dashboard' %}">{% translate "Кабинетке оралу" %}</a>
+    {% endif %}
+</div>
+
+{% if not result %}
+    {# Оқытушы аяқталмаған әрекетті ашты #}
+    <div class="alert alert-info">
+        {% blocktranslate with deadline=attempt.deadline|date:"d.m.Y, H:i" %}Тест әлі аяқталмаған (мерзімі: {{ deadline }}).{% endblocktranslate %}
+    </div>
+{% else %}
+    {# Жиынтық: балл, пайыз, жұмсалған уақыт #}
+    <div class="row g-3 mb-4">
+        <div class="col-sm-4">
+            <div class="bg-white rounded shadow-sm p-3 text-center h-100">
+                <div class="text-muted small">{% translate "Балл" %}</div>
+                <div class="display-6 fw-semibold">{{ result.score }} / {{ result.total }}</div>
+            </div>
+        </div>
+        <div class="col-sm-4">
+            <div class="bg-white rounded shadow-sm p-3 text-center h-100">
+                <div class="text-muted small">{% translate "Пайыз" %}</div>
+                <div class="display-6 fw-semibold">{{ result.percent }}%</div>
+            </div>
+        </div>
+        <div class="col-sm-4">
+            <div class="bg-white rounded shadow-sm p-3 text-center h-100">
+                <div class="text-muted small">{% translate "Жұмсалған уақыт" %}</div>
+                <div class="display-6 fw-semibold">
+                    {% blocktranslate with minutes=result.spent_minutes seconds=result.spent_seconds %}{{ minutes }} мин {{ seconds }} с{% endblocktranslate %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-4 mb-4">
+        {# Қиындық деңгейі бойынша #}
+        <div class="col-lg-4">
+            <h2 class="h6">{% translate "Деңгей бойынша" %}</h2>
+            <div class="table-responsive bg-white rounded shadow-sm">
+                <table class="table table-sm align-middle mb-0">
+                    <thead>
+                        <tr>
+                            <th>{% translate "Деңгей" %}</th>
+                            <th class="text-end">{% translate "Дұрыс" %}</th>
+                            <th class="text-end">%</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in result.levels %}
+                            <tr>
+                                <td>{{ row.label }}</td>
+                                <td class="text-end">{{ row.correct }} / {{ row.total }}</td>
+                                <td class="text-end">{{ row.percent }}%</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        {# 11 тақырып бойынша: әлсіз тақырыптар қызылмен #}
+        <div class="col-lg-8">
+            <h2 class="h6">{% translate "Тақырып бойынша" %}</h2>
+            <div class="table-responsive bg-white rounded shadow-sm">
+                <table class="table table-sm align-middle mb-0">
+                    <thead>
+                        <tr>
+                            <th>{% translate "Тақырып" %}</th>
+                            <th class="text-end">{% translate "Дұрыс" %}</th>
+                            <th class="text-end">%</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in result.topics %}
+                            <tr{% if row.total and row.percent < 50 %} class="table-danger"{% endif %}>
+                                <td>{{ row.topic }}</td>
+                                <td class="text-end text-nowrap">{{ row.correct }} / {{ row.total }}</td>
+                                <td class="text-end">{{ row.percent }}%</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <div class="form-text">{% translate "Қызылмен — дұрыс жауабы жартысынан аз тақырыптар." %}</div>
+        </div>
+    </div>
+
+    {# Әр сұрақ: студенттің жауабы және дұрыс жауап #}
+    <h2 class="h5 mb-3">{% translate "Сұрақтар мен дұрыс жауаптар" %}</h2>
+    {% if show_answers %}
+        {% for row in result.questions %}
+            {% with question=row.question %}
+                <div class="bg-white rounded shadow-sm p-3 mb-3 border-start border-4 {% if row.is_correct %}border-success{% else %}border-danger{% endif %}">
+                    <div class="d-flex flex-wrap gap-2 align-items-center mb-2">
+                        <span class="fw-semibold">{% blocktranslate with number=row.number %}{{ number }}-сұрақ{% endblocktranslate %}</span>
+                        {% if row.is_correct %}
+                            <span class="badge text-bg-success">{% translate "Дұрыс" %}</span>
+                        {% elif row.selected_id %}
+                            <span class="badge text-bg-danger">{% translate "Қате" %}</span>
+                        {% else %}
+                            <span class="badge text-bg-secondary">{% translate "Жауап берілмеген" %}</span>
+                        {% endif %}
+                        <span class="small text-muted">{{ question.subtopic }} · {{ question.level }}</span>
+                    </div>
+
+                    {% if question.context %}
+                        <details class="mb-2">
+                            <summary class="small">{% translate "Контекст" %}: {{ question.context.title }}</summary>
+                            <div class="border rounded p-2 mt-2 bg-light">
+                                <div>{{ question.context.text|linebreaksbr }}</div>
+                                {% if question.context.code %}<pre class="code-block mt-2 mb-0">{{ question.context.code }}</pre>{% endif %}
+                                {% if question.context.image %}<img src="{{ question.context.image.url }}" class="img-fluid mt-2" alt="">{% endif %}
+                            </div>
+                        </details>
+                    {% endif %}
+                    <div class="mb-2">{{ question.text|linebreaksbr }}</div>
+                    {% if question.code %}<pre class="code-block">{{ question.code }}</pre>{% endif %}
+                    {% if question.image %}<img src="{{ question.image.url }}" class="img-fluid mb-2" alt="">{% endif %}
+
+                    <div class="list-group">
+                        {% for option in row.answers %}
+                            {% with answer=option.answer %}
+                                <div class="list-group-item d-flex gap-2{% if answer.is_correct %} list-group-item-success{% elif answer.pk == row.selected_id %} list-group-item-danger{% endif %}">
+                                    <span class="fw-semibold">{{ option.letter }})</span>
+                                    <pre class="answer-text flex-grow-1">{{ answer.text }}</pre>
+                                    {% if answer.pk == row.selected_id %}<span class="badge text-bg-dark align-self-start">{% translate "таңдалған жауап" %}</span>{% endif %}
+                                    {% if answer.is_correct %}<span class="badge text-bg-success align-self-start">{% translate "дұрыс" %}</span>{% endif %}
+                                </div>
+                            {% endwith %}
+                        {% endfor %}
+                    </div>
+                </div>
+            {% endwith %}
+        {% endfor %}
+    {% else %}
+        <div class="alert alert-info">
+            {% blocktranslate with closes=attempt.session.closes_at|date:"d.m.Y, H:i" %}Дұрыс жауаптар сессия жабылғаннан кейін ({{ closes }}) көрсетіледі.{% endblocktranslate %}
+        </div>
+    {% endif %}
+{% endif %}
+{% endblock %}
