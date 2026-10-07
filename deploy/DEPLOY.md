@@ -92,7 +92,7 @@ cd /srv/ozp-test
 sudo -u ozp .venv/bin/python manage.py migrate
 sudo -u ozp .venv/bin/python manage.py collectstatic --noinput
 sudo -u ozp .venv/bin/python manage.py compilemessages --ignore=.venv
-sudo -u ozp .venv/bin/python manage.py load_topics
+sudo -u ozp .venv/bin/python manage.py load_subjects
 sudo -u ozp .venv/bin/python manage.py createsuperuser
 sudo -u ozp .venv/bin/python manage.py check --deploy
 ```
@@ -101,6 +101,8 @@ sudo -u ozp .venv/bin/python manage.py check --deploy
 
 Жүктелген суреттер папкасы: `sudo -u ozp mkdir -p media`.
 
+> **Пәндер:** `load_subjects` барлық пәнді, тақырыптарды және тақырыпшаларды `apps/quiz/data/subjects.json`-нан жүктейді (қайта іске қосуға болады). Жаңа пән қосылса немесе `subjects.json` түзетілсе, жаңартудан кейін осы команданы қайта орындаңыз. Оқытушыларды әкімші admin-де қосады (README, «Оқытушыны қосу»).
+>
 > **Демо сұрақтар:** серверде `load_demo` іске қоспаңыз. Егер тексеру үшін жүктелсе, нақты пайдалануға дейін міндетті түрде өшіріңіз: `sudo -u ozp .venv/bin/python manage.py load_demo --delete`.
 
 ## 5. Gunicorn (systemd) және Nginx
@@ -165,6 +167,8 @@ sudo -u ozp .venv/bin/pip install --no-cache-dir -r requirements.txt
 sudo -u ozp .venv/bin/python manage.py migrate
 sudo -u ozp .venv/bin/python manage.py collectstatic --noinput
 sudo -u ozp .venv/bin/python manage.py compilemessages --ignore=.venv
+# subjects.json өзгерсе:
+sudo -u ozp .venv/bin/python manage.py load_subjects
 sudo systemctl restart ozp-test
 ```
 
@@ -187,7 +191,8 @@ sudo systemctl start ozp-test
 - [ ] `https://test.example.kz` ашылады, `http://` мекенжайы HTTPS-ке бағытталады.
 - [ ] `sudo -u ozp .venv/bin/python manage.py check --deploy` ескертусіз өтеді.
 - [ ] Кіру, тіркелу, тіл ауыстырғыш (KK / RU) жұмыс істейді; статика (Bootstrap, таймер) жүктеледі.
-- [ ] Оқытушы сурет жүктей алады және ол сұрақта көрінеді (`/media/`).
+- [ ] Оқытушы сурет жүктей алады және ол сұрақта көрінеді (`/media/`); тек суреттен тұратын жауап нұсқасы сақталады.
+- [ ] Математика сұрағындағы `\(\frac{1}{2}\)` формула болып көрінеді (KaTeX, `cdn.jsdelivr.net`).
 - [ ] `sudo reboot` → бірнеше минуттан кейін сайт өзі ашылады.
 - [ ] Келесі күні `/var/backups/ozp-test` ішінде жаңа `db-*.sql.gz` файлы бар.
 - [ ] `sudo ufw status` — тек 22, 80, 443.

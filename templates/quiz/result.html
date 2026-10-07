@@ -139,7 +139,7 @@
                             {% with answer=option.answer %}
                                 <div class="list-group-item d-flex gap-2{% if answer.is_correct %} list-group-item-success{% elif answer.pk == row.selected_id %} list-group-item-danger{% endif %}">
                                     <span class="fw-semibold">{{ option.letter }})</span>
-                                    <pre class="answer-text flex-grow-1">{{ answer.text }}</pre>
+                                    {% include "quiz/_answer_content.html" with letter=option.letter %}
                                     {% if answer.pk == row.selected_id %}<span class="badge text-bg-dark align-self-start">{% translate "таңдалған жауап" %}</span>{% endif %}
                                     {% if answer.is_correct %}<span class="badge text-bg-success align-self-start">{% translate "дұрыс" %}</span>{% endif %}
                                 </div>

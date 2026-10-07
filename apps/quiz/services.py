@@ -120,7 +120,10 @@ def copy_question(question):
         is_demo=question.is_demo,
     )
     for answer in question.answers.all():
-        Answer.objects.create(question=copy, text=answer.text, is_correct=answer.is_correct)
+        # Сурет файлы көшірілмейді: көшірме сол файлға сілтейді
+        Answer.objects.create(
+            question=copy, text=answer.text, image=answer.image, is_correct=answer.is_correct
+        )
     return copy
 
 
@@ -742,12 +745,17 @@ def question_page_data(attempt, item, now=None):
     """
     Сұрақ бетіне керек деректер: 1–50 навигация (жауап берілгені белгіленеді),
     жауап нұсқалары, алдыңғы/келесі нөмірлер, жауап берілмегендер саны, қалған уақыт.
-    Нұсқалардың тек id-і мен мәтіні беріледі: is_correct шаблонға жетпейді.
+    Нұсқалардың тек id-і, мәтіні мен суреті беріледі: is_correct шаблонға жетпейді.
     """
     navigation = list(attempt.items.order_by("order").values_list("order", "selected_id"))
     answers_by_id = Answer.objects.in_bulk(item.answer_order)
     answers = [
-        {"letter": row["letter"], "id": row["answer"].pk, "text": row["answer"].text}
+        {
+            "letter": row["letter"],
+            "id": row["answer"].pk,
+            "text": row["answer"].text,
+            "image": row["answer"].image,
+        }
         for row in ordered_answers(item.answer_order, answers_by_id)
     ]
     total = len(navigation)
@@ -1003,7 +1011,9 @@ def practice_question_data(practice, number):
     """
     item = practice["items"][number - 1]
     question = (
-        Question.objects.select_related("context", "subtopic").filter(pk=item["question"]).first()
+        Question.objects.select_related("context", "subtopic__topic__subject")
+        .filter(pk=item["question"])
+        .first()
     )
     if question is None:
         return None
@@ -1018,6 +1028,7 @@ def practice_question_data(practice, number):
                 "letter": row["letter"],
                 "id": answer.pk,
                 "text": answer.text,
+                "image": answer.image,
                 # Дұрыс жауап тек студент жауап бергеннен кейін шаблонға жетеді
                 "is_correct": answer.is_correct if answered else None,
                 "is_selected": answer.pk == item["selected"],
@@ -1033,6 +1044,7 @@ def practice_question_data(practice, number):
         "answered": answered,
         "is_correct": answered and any(a["is_selected"] and a["is_correct"] for a in answers),
         "navigation": practice_navigation(practice),
+        "uses_formulas": question.subtopic.topic.subject.uses_formulas,
         "previous_number": number - 1 if number > 1 else None,
         "next_number": number + 1 if number < total else None,
     }

@@ -64,7 +64,7 @@ def interface_language():
 def get_own_attempt(request, attempt_id):
     """Студенттің өз әрекеті (бөтен әрекет — 404); мерзімі өтсе, аяқталады."""
     attempt = get_object_or_404(
-        Attempt.objects.select_related("session"), pk=attempt_id, user=request.user
+        Attempt.objects.select_related("session__subject"), pk=attempt_id, user=request.user
     )
     return finish_if_expired(attempt)
 
@@ -134,7 +134,15 @@ def attempt_question(request, attempt_id, number):
         return redirect("quiz:attempt_question", attempt.pk, number)
 
     context = question_page_data(attempt, item)
-    context.update({"attempt": attempt, "item": item, "question": item.question})
+    context.update(
+        {
+            "attempt": attempt,
+            "item": item,
+            "question": item.question,
+            # Формулалар (KaTeX) тек формуласы бар пәнде қосылады
+            "uses_formulas": attempt.session.subject.uses_formulas,
+        }
+    )
     return render(request, "quiz/question.html", context)
 
 
@@ -184,6 +192,7 @@ def attempt_result_page(request, attempt_id):
         "attempt": attempt,
         "result": attempt_result(attempt, with_answers=show_answers),
         "show_answers": show_answers,
+        "uses_formulas": attempt.session.subject.uses_formulas,
     }
     return render(request, "quiz/result.html", context)
 

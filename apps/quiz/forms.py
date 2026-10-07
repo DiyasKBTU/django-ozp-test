@@ -22,10 +22,21 @@ from .models import (
 )
 
 
+ANSWER_EMPTY_ERROR = _("Әр жауап нұсқасында мәтін немесе сурет болуы керек.")
+
+# Сурет өрістері: браузер тек рұқсат етілген пішімдерді ұсынады (тексеруді сервер жасайды)
+IMAGE_ACCEPT = "image/jpeg,image/png,image/webp"
+
+
+def answer_has_content(cleaned_data):
+    """Жауап нұсқасында мәтін немесе сурет бар ма (сурет өшірілсе — False)."""
+    return bool(cleaned_data.get("text", "").strip() or cleaned_data.get("image"))
+
+
 class AnswerInlineFormSet(forms.BaseInlineFormSet):
     """
-    Сұрақтың жауап нұсқаларын тексереді (admin үшін):
-    дәл 4 нұсқа және олардың дәл біреуі дұрыс.
+    Сұрақтың жауап нұсқаларын тексереді (admin үшін): дәл 4 нұсқа,
+    олардың дәл біреуі дұрыс, әрқайсында мәтін не сурет бар.
     """
 
     def clean(self):
@@ -42,6 +53,8 @@ class AnswerInlineFormSet(forms.BaseInlineFormSet):
             filled_count += 1
             if form.cleaned_data.get("is_correct"):
                 correct_count += 1
+            if not answer_has_content(form.cleaned_data):
+                raise forms.ValidationError(ANSWER_EMPTY_ERROR)
 
         if filled_count != ANSWERS_PER_QUESTION:
             raise forms.ValidationError(
@@ -196,6 +209,7 @@ class QuestionForm(forms.ModelForm):
         )
         if self.instance.pk:
             self.initial["topic"] = self.instance.subtopic.topic_id
+        self.fields["image"].widget.attrs["accept"] = IMAGE_ACCEPT
         add_bootstrap_classes(self)
 
     def clean(self):
@@ -241,17 +255,28 @@ class QuestionForm(forms.ModelForm):
 
 
 class AnswerForm(forms.ModelForm):
-    """Бір жауап нұсқасы; мәтінге код жазуға болады (шегіністер сақталады)."""
+    """
+    Бір жауап нұсқасы: мәтін (код болуы мүмкін, шегіністер сақталады)
+    немесе сурет, не екеуі де. Екеуі де бос болса — қате.
+    """
 
-    text = CodeField(label=_("Жауап нұсқасы"), rows=2)
+    text = CodeField(label=_("Жауап нұсқасы"), rows=2, required=False)
 
     class Meta:
         model = Answer
-        fields = ["text"]
+        fields = ["text", "image"]
+        labels = {"image": _("Сурет")}
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.fields["image"].widget.attrs["accept"] = IMAGE_ACCEPT
         add_bootstrap_classes(self)
+
+    def clean(self):
+        cleaned_data = super().clean()
+        if not self.errors and not answer_has_content(cleaned_data):
+            raise forms.ValidationError(ANSWER_EMPTY_ERROR)
+        return cleaned_data
 
 
 class QuestionAnswersFormSet(forms.BaseInlineFormSet):

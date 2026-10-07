@@ -1,0 +1,7 @@
+{% load static %}
+{# KaTeX (TZ.md, 10.6): \( ... \) — жол ішінде, \[ ... \] — бөлек жолда. #}
+{# CDN жүктелмесе, мәтін бастапқы күйінде қалады (static/js/formulas.js). #}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
+<script defer src="{% static 'js/formulas.js' %}"></script>

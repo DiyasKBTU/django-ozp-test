@@ -20,6 +20,15 @@
         pre.answer-text {
             margin: 0;
             white-space: pre-wrap;
+            /* Формула (бөлшек) жолдан биік болса да айналдыру жолағы шықпасын */
+            overflow: visible;
+        }
+        /* Жауап нұсқасындағы сурет: биіктігі шектелген, басқанда толық өлшемде ашылады */
+        img.answer-image {
+            max-height: 160px;
+            max-width: 100%;
+            border: 1px solid #dee2e6;
+            border-radius: .375rem;
         }
         .bank-table td.missing {
             background: #f8d7da;
@@ -113,6 +122,8 @@
 </main>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+{# Формулалар: тек формуласы бар пәннің сұрақ беттерінде (view uses_formulas береді) #}
+{% if uses_formulas %}{% include "quiz/_katex.html" %}{% endif %}
 {% block scripts %}{% endblock %}
 </body>
 </html>

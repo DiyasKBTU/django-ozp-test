@@ -146,7 +146,7 @@ def question_form_page(request, subject, question=None):
     """Сұрақ енгізу (question=None) және өңдеу беттерінің ортақ бөлігі."""
     if request.method == "POST":
         form = QuestionForm(request.POST, request.FILES, instance=question, subject=subject)
-        formset = AnswerFormSet(request.POST, instance=form.instance)
+        formset = AnswerFormSet(request.POST, request.FILES, instance=form.instance)
         if form.is_valid() and formset.is_valid():
             question = save_question(form, formset)
             if "save_and_next" in request.POST:
@@ -168,7 +168,14 @@ def question_form_page(request, subject, question=None):
     return render(
         request,
         "teacher/question_form.html",
-        {"form": form, "formset": formset, "question": question, "preview": preview},
+        {
+            "form": form,
+            "formset": formset,
+            "question": question,
+            "preview": preview,
+            # Формулалар: кеңес көрсетіледі, алдын ала қарауда KaTeX қосылады
+            "uses_formulas": subject.uses_formulas,
+        },
     )
 
 
@@ -288,7 +295,11 @@ def bank_sample(request, subject):
     жазылмайды (Attempt жасалмайды). Бет жаңартылған сайын жаңа нұсқа шығады.
     """
     language = SampleVariantForm(request.GET).get_language()
-    context = {"language": language, "languages": Language.choices}
+    context = {
+        "language": language,
+        "languages": Language.choices,
+        "uses_formulas": subject.uses_formulas,
+    }
     try:
         context["summary"] = variant_summary(subject, build_variant(subject, language))
     except AttemptError as error:

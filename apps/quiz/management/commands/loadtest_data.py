@@ -3,17 +3,19 @@
 student001, student002, ... және солар үшін ғана ашық тест сессиясы.
 
 Іске қосу:
-    python manage.py loadtest_data                # 100 аккаунт: student001–student100
-    python manage.py loadtest_data --count 1000   # 1000 аккаунт: student001–student1000
-    python manage.py loadtest_data --delete       # аккаунттарды, сессияны, нәтижелерді өшіру
+    python manage.py loadtest_data                         # 100 аккаунт: student001–student100
+    python manage.py loadtest_data --count 1000            # 1000 аккаунт: student001–student1000
+    python manage.py loadtest_data --subject mathematics   # математика бойынша (әдепкі: informatics)
+    python manage.py loadtest_data --delete                # аккаунттарды, сессияны, нәтижелерді өшіру
 
 Қайта іске қосуға болады: аккаунттар қайталанбайды, олардың бұрынғы әрекеттері
 өшіріледі, сессия қайта ашылады — тестті жаңадан тапсыруға болады.
 Аккаунттар мен сессия бөлек «LOADTEST» тобына жатады: нақты студенттер
-бұл сессияны көрмейді. Жүктеме тестінен кейін `--delete` орындаңыз.
+бұл сессияны көрмейді. Топ пен сессияның пәні — --subject (қайта іске
+қосқанда пән ауыстырылады). Жүктеме тестінен кейін `--delete` орындаңыз.
 
-Ескерту: тест нұсқасы құрылуы үшін банкте сұрақ жеткілікті болуы керек
-(мысалы, `load_demo`).
+Ескерту: тест нұсқасы құрылуы үшін сол пәннің банкінде сұрақ жеткілікті
+болуы керек (мысалы, `load_demo --subject <code>`).
 """
 
 from datetime import timedelta
@@ -57,6 +59,12 @@ class Command(BaseCommand):
             "--hours", type=int, default=3, help="Сессия неше сағат ашық тұрады (әдепкі: 3)."
         )
         parser.add_argument(
+            "--subject",
+            default=INFORMATICS_CODE,
+            metavar="CODE",
+            help="Тест пәні (әдепкі: informatics).",
+        )
+        parser.add_argument(
             "--delete", action="store_true", help="Жүктеме тестінің барлық деректерін өшіру."
         )
 
@@ -66,15 +74,17 @@ class Command(BaseCommand):
             return
         if options["count"] < 1:
             raise CommandError("--count кемінде 1 болуы керек.")
-        self.create_data(options["count"], options["password"], options["hours"])
+        subject = Subject.objects.filter(code=options["subject"]).first()
+        if subject is None:
+            raise CommandError(
+                f"«{options['subject']}» пәні жоқ. Алдымен: python manage.py load_subjects"
+            )
+        self.create_data(subject, options["count"], options["password"], options["hours"])
 
     @transaction.atomic
-    def create_data(self, count, password, hours):
-        # Жүктеме тесті — информатика бойынша (--subject 12-кезеңде қосылады)
-        subject = Subject.objects.filter(code=INFORMATICS_CODE).first()
-        if subject is None:
-            raise CommandError("Алдымен пәндерді жүктеңіз: python manage.py load_subjects")
-        group, _created = StudyGroup.objects.get_or_create(
+    def create_data(self, subject, count, password, hours):
+        # Топтың пәні әр іске қосқанда --subject бойынша жаңартылады
+        group, _created = StudyGroup.objects.update_or_create(
             name=GROUP_NAME, defaults={"subject": subject}
         )
         names = usernames(count)
@@ -130,7 +140,7 @@ class Command(BaseCommand):
             )
         )
         self.stdout.write(
-            f"Сессия id={session.pk} «{session.title}», "
+            f"Сессия id={session.pk} «{session.title}» ({subject.code}), "
             f"{timezone.localtime(session.closes_at):%d.%m.%Y %H:%M} дейін ашық."
         )
         self.stdout.write(

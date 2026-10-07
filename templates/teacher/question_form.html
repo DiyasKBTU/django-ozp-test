@@ -30,6 +30,16 @@
             {% include "teacher/_radio_field.html" with field=form.level %}
             {% include "teacher/_radio_field.html" with field=form.language inline=True %}
             {% include "teacher/_field.html" with field=form.context %}
+            {% if uses_formulas %}
+                {# Формулалар кеңесі: <code> ішіндегі мысал KaTeX-пен өңделмейді #}
+                <div class="alert alert-info small py-2">
+                    {% translate "Формула: жол ішінде" %} <code>\( ... \)</code>, {% translate "бөлек жолда" %} <code>\[ ... \]</code>.
+                    {% translate "Мысалдар:" %}
+                    <code>\(x^2\)</code>, <code>\(\frac{a}{b}\)</code>, <code>\(\sqrt{x}\)</code>,
+                    <code>\(\int_0^1 f(x)\,dx\)</code>, <code>\(\sin\alpha\)</code>.
+                    {% translate "Формула мәтінде, контекстте және жауап нұсқаларында жұмыс істейді; сақтағаннан кейін алдын ала қарауда дайын түрінде көрінеді." %}
+                </div>
+            {% endif %}
             {% include "teacher/_field.html" with field=form.text %}
             {% include "teacher/_field.html" with field=form.code %}
             {% include "teacher/_field.html" with field=form.image %}
@@ -38,7 +48,7 @@
             <div class="mb-3">
                 <div class="form-label fw-semibold">
                     {% translate "Жауап нұсқалары" %} <span class="text-danger">*</span>
-                    <span class="fw-normal text-muted small">— {% translate "дұрысын радио-батырмамен белгілеңіз" %}</span>
+                    <span class="fw-normal text-muted small">— {% translate "дұрысын радио-батырмамен белгілеңіз; әр нұсқада мәтін немесе сурет болуы керек" %}</span>
                 </div>
                 {{ formset.management_form }}
                 {% for error in formset.non_form_errors %}<div class="alert alert-danger py-2">{{ error }}</div>{% endfor %}
@@ -55,6 +65,15 @@
                             <div class="flex-grow-1">
                                 {{ answer_form.text }}
                                 {% for error in answer_form.text.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}
+                                <div class="d-flex flex-wrap align-items-center gap-2 mt-1 small">
+                                    {% if answer_form.instance.image %}
+                                        <img src="{{ answer_form.instance.image.url }}" class="answer-image" style="max-height: 60px" alt="">
+                                    {% endif %}
+                                    <span class="text-muted">{% translate "Сурет (jpg, png, webp, 2 МБ-қа дейін):" %}</span>
+                                    {{ answer_form.image }}
+                                </div>
+                                {% for error in answer_form.image.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}
+                                {% for error in answer_form.non_field_errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}
                             </div>
                         </div>
                     {% endfor %}

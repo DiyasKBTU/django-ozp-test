@@ -1,11 +1,17 @@
+import uuid
+from pathlib import Path
+
 from django.conf import settings
 from django.core.exceptions import ValidationError
+from django.core.validators import FileExtensionValidator
 from django.db import models
 from django.utils import timezone
 from django.utils.translation import get_language
 from django.utils.translation import gettext_lazy as _
 
 from apps.accounts.models import StudyGroup
+
+from .constants import IMAGE_EXTENSIONS, MAX_IMAGE_MB
 
 
 class Language(models.TextChoices):
@@ -59,6 +65,26 @@ LEVEL_FULL_DESCRIPTIONS = {
         "талдауды, пайымдауды, тұжырымдарды негіздеуге бағытталған."
     ),
 }
+
+
+def validate_image_size(image):
+    """Сурет MAX_IMAGE_MB-тан (2 МБ) аспауы керек."""
+    if image.size > MAX_IMAGE_MB * 1024 * 1024:
+        raise ValidationError(
+            _("Сурет тым үлкен: ең көбі %(size)s МБ."), params={"size": MAX_IMAGE_MB}
+        )
+
+
+# Сұрақ пен жауап суреттерінің тексерулері: jpg / png / webp, 2 МБ-қа дейін
+IMAGE_VALIDATORS = [FileExtensionValidator(IMAGE_EXTENSIONS), validate_image_size]
+
+
+def answer_image_path(instance, filename):
+    """
+    Жауап суреті кездейсоқ атпен сақталады (answers/<uuid>.png): файл атынан
+    дұрыс жауапты болжау мүмкін болмасын.
+    """
+    return f"answers/{uuid.uuid4().hex}{Path(filename).suffix.lower()}"
 
 
 def localized_name(name_kk, name_ru):
@@ -212,7 +238,9 @@ class Question(models.Model):
     )
     language = models.CharField(_("тілі"), max_length=2, choices=Language.choices)
     text = models.TextField(_("сұрақ мәтіні"))
-    image = models.ImageField(_("суреті"), upload_to="questions/", blank=True)
+    image = models.ImageField(
+        _("суреті"), upload_to="questions/", blank=True, validators=IMAGE_VALIDATORS
+    )
     # Бағдарлама коды: шегіністер сақталады, <pre> ішінде көрсетіледі
     code = models.TextField(_("коды"), blank=True)
     level = models.CharField(_("деңгейі"), max_length=1, choices=Level.choices)
@@ -244,7 +272,10 @@ class Question(models.Model):
 
 
 class Answer(models.Model):
-    """Жауап нұсқасы. Әр сұрақта дәл 4 нұсқа, біреуі дұрыс (forms.py тексереді)."""
+    """
+    Жауап нұсқасы: мәтін немесе сурет (екеуі де болуы мүмкін). Әр сұрақта дәл
+    4 нұсқа, біреуі дұрыс, әрқайсында мәтін не сурет бар (forms.py тексереді).
+    """
 
     question = models.ForeignKey(
         Question,
@@ -253,7 +284,10 @@ class Answer(models.Model):
         verbose_name=_("сұрақ"),
     )
     # Мәтін өзгертілмей сақталады, <pre> ішінде көрсетіледі (код болуы мүмкін)
-    text = models.TextField(_("мәтіні"))
+    text = models.TextField(_("мәтіні"), blank=True)
+    image = models.ImageField(
+        _("суреті"), upload_to=answer_image_path, blank=True, validators=IMAGE_VALIDATORS
+    )
     is_correct = models.BooleanField(_("дұрыс"), default=False)
 
     class Meta:
@@ -262,7 +296,8 @@ class Answer(models.Model):
         verbose_name_plural = _("жауап нұсқалары")
 
     def __str__(self):
-        return self.text[:60]
+        # Тек суреттен тұратын нұсқа
+        return self.text[:60] or f"[{Path(self.image.name).name}]"
 
 
 # ---------- Сессиялар ----------

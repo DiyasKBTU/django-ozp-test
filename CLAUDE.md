@@ -30,6 +30,8 @@
 - Банк пен нұсқа сервистері пәнді параметр ретінде алады: `build_variant(subject, language)`, `full_contexts(subject, language)`, `bank_coverage(subject)`, `variant_summary(subject, ids)`; `create_attempt()` пәнді сессиядан алады.
 - Тест мерзімі: `deadline = min(started_at + session.subject.duration_minutes, session.closes_at)`.
 - Студент жағы — тек тобының пәні (`services.student_subject`): сессиялар (`visible_sessions`: пәні бірдей және топтары бос не тобы ішінде; тобы жоқ — ештеңе), жаттығу тақырыптары, нәтижедегі тақырыптар талдауы. Тіркелудегі топтар пән бойынша `<optgroup>`-пен, «МАТ-21 — Математика».
+- **Формулалар (KaTeX, CDN):** тек `subject.uses_formulas` пәнінде және тек сұрақ беттерінде — view `uses_formulas` береді, `base.html` `quiz/_katex.html`-ды қосады; `static/js/formulas.js` `\( \)` / `\[ \]` өңдейді (`pre.code-block`, `code`, форма өрістері — жоқ). Мәтін өзгеріссіз сақталады, `|safe` жоқ.
+- **Жауап нұсқасы:** мәтін және/немесе сурет (`Answer.image`, файл аты uuid); екеуі де бос — қате (`forms.answer_has_content`). Сурет — jpg/png/webp, 2 МБ (`constants.MAX_IMAGE_MB`, `models.IMAGE_VALIDATORS`). Жауапты шаблонда `quiz/_answer_content.html` көрсетеді.
 - **Жаңа пән кодты өзгертпей қосылады:** `subjects.json`-ға жазылып, `load_subjects` іске қосылады. Пәнге тән мән кодта жазылмайды (тек бұрынғы деректер үшін `constants.INFORMATICS_CODE`).
 
 ## Код жазу ережелері
@@ -65,7 +67,7 @@ Python виртуалды ортасы — **`.venv`** (Windows):
 python -m venv .venv
 .venv\Scripts\python -m pip install -r requirements.txt
 .venv\Scripts\python manage.py migrate
-.venv\Scripts\python manage.py load_topics
+.venv\Scripts\python manage.py load_subjects
 .venv\Scripts\python manage.py load_demo
 .venv\Scripts\python manage.py runserver
 ```
@@ -80,7 +82,8 @@ python -m venv .venv
 - `load_subjects` — `subjects.json`-нан барлық пәнді, тақырыптарды, тақырыпшаларды жүктейді (4 пән: 11 / 5 / 5 / 20 тақырып, әрқайсында 20 тақырыпша); `--only <code>` — бір пән. Алдымен тексереді (дәл 20 тақырыпша, 1–20, атаулар бос емес), қате болса ештеңе жазбайды; қайта іске қосуға болады.
 - `load_topics` — `load_subjects --only informatics` (бұрынғы команда).
 - «Информатика» пәні деректер миграциясында жасалады (`quiz/0003`): бұрынғы деректер соған байланған.
-- `load_demo` — демо сұрақтар мен контексттер, барлығы `is_demo=True`; `load_demo --delete` оларды толық өшіреді.
+- `load_demo` — тақырыптары жүктелген әр пәнге демо сұрақтар мен контексттер (әр пәнде толық нұсқа құрылады), барлығы `is_demo=True`; `--subject <code>` — бір пән; `load_demo --delete [--subject <code>]` оларды толық өшіреді (суреттерімен).
+- `loadtest_data [--subject <code>]` — жүктеме тестінің аккаунттары мен сессиясы (әдепкі пән — informatics).
 
 ## Git
 

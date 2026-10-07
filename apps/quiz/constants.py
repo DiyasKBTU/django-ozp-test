@@ -28,5 +28,9 @@ MIN_CONTEXTS = 4
 # Тақырыптық жаттығу (екінші кезең): бір тақырыптан сұрақ саны, таймерсіз
 PRACTICE_QUESTIONS = 10
 
+# Сұрақ пен жауап нұсқасының суреті: ең үлкен өлшемі (МБ) және рұқсат етілген пішімдер
+MAX_IMAGE_MB = 2
+IMAGE_EXTENSIONS = ["jpg", "jpeg", "png", "webp"]
+
 # Бұрынғы (бір пәнді) деректердің пәні: load_topics, load_demo, loadtest_data
 INFORMATICS_CODE = "informatics"

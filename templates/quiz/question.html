@@ -38,7 +38,7 @@
                            onchange="this.form.submit()"
                            {% if answer.id == item.selected_id %}checked{% endif %}>
                     <span class="fw-semibold">{{ answer.letter }})</span>
-                    <pre class="answer-text flex-grow-1">{{ answer.text }}</pre>
+                    {% include "quiz/_answer_content.html" with letter=answer.letter %}
                 </label>
             {% endfor %}
         </div>

@@ -1,0 +1,10 @@
+{# Жауап нұсқасының мазмұны: мәтін (код болуы мүмкін) және/немесе сурет. #}
+{# Сурет биіктігі шектеліп көрсетіледі, басқанда жаңа бетте толық өлшемде ашылады. #}
+<div class="flex-grow-1">
+    {% if answer.text %}<pre class="answer-text">{{ answer.text }}</pre>{% endif %}
+    {% if answer.image %}
+        <a href="{{ answer.image.url }}" target="_blank" rel="noopener"{% if answer.text %} class="d-inline-block mt-1"{% endif %}>
+            <img src="{{ answer.image.url }}" class="answer-image" alt="{{ letter }}">
+        </a>
+    {% endif %}
+</div>

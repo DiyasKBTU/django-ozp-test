@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-07 18:18+0500\n"
+"POT-Creation-Date: 2026-10-07 18:35+0500\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -46,7 +46,7 @@ msgstr "группа"
 msgid "Қолданушылар мен топтар"
 msgstr "Пользователи и группы"
 
-#: .\apps\accounts\forms.py:13 .\apps\quiz\services.py:815
+#: .\apps\accounts\forms.py:13 .\apps\quiz\services.py:823
 msgid "Логин"
 msgstr "Логин"
 
@@ -98,18 +98,18 @@ msgstr "Неверный логин или пароль."
 msgid "Бұл тіркелгі бұғатталған."
 msgstr "Эта учётная запись заблокирована."
 
-#: .\apps\accounts\models.py:9 .\apps\quiz\models.py:175
-#: .\apps\quiz\models.py:278
+#: .\apps\accounts\models.py:9 .\apps\quiz\models.py:201
+#: .\apps\quiz\models.py:313
 msgid "атауы"
 msgstr "название"
 
-#: .\apps\accounts\models.py:14 .\apps\quiz\models.py:89
-#: .\apps\quiz\models.py:110 .\apps\quiz\models.py:172
-#: .\apps\quiz\models.py:283
+#: .\apps\accounts\models.py:14 .\apps\quiz\models.py:115
+#: .\apps\quiz\models.py:136 .\apps\quiz\models.py:198
+#: .\apps\quiz\models.py:318
 msgid "пән"
 msgstr "предмет"
 
-#: .\apps\accounts\models.py:20 .\apps\quiz\models.py:292
+#: .\apps\accounts\models.py:20 .\apps\quiz\models.py:327
 msgid "топтар"
 msgstr "группы"
 
@@ -117,7 +117,7 @@ msgstr "группы"
 msgid "қолданушы"
 msgstr "пользователь"
 
-#: .\apps\accounts\models.py:48 .\apps\quiz\models.py:90
+#: .\apps\accounts\models.py:48 .\apps\quiz\models.py:116
 msgid "пәндер"
 msgstr "предметы"
 
@@ -163,11 +163,11 @@ msgstr "Пароль не может состоять только из цифр
 msgid "Тек сандардан тұрмауы керек."
 msgstr "Не может состоять только из цифр."
 
-#: .\apps\quiz\admin.py:151 .\apps\quiz\models.py:176 .\apps\quiz\models.py:256
+#: .\apps\quiz\admin.py:151 .\apps\quiz\models.py:202 .\apps\quiz\models.py:287
 msgid "мәтіні"
 msgstr "текст"
 
-#: .\apps\quiz\admin.py:170 .\apps\quiz\models.py:225
+#: .\apps\quiz\admin.py:170 .\apps\quiz\models.py:253
 msgid "сұрақтар"
 msgstr "вопросы"
 
@@ -175,180 +175,184 @@ msgstr "вопросы"
 msgid "Тест"
 msgstr "Тест"
 
-#: .\apps\quiz\forms.py:48
+#: .\apps\quiz\forms.py:25
+msgid "Әр жауап нұсқасында мәтін немесе сурет болуы керек."
+msgstr "В каждом варианте ответа должен быть текст или изображение."
+
+#: .\apps\quiz\forms.py:61
 #, python-format
 msgid "Дәл %(count)s жауап нұсқасы болуы керек."
 msgstr "Должно быть ровно %(count)s варианта ответа."
 
-#: .\apps\quiz\forms.py:52
+#: .\apps\quiz\forms.py:65
 msgid "Дәл бір дұрыс жауап белгіленуі керек."
 msgstr "Должен быть отмечен ровно один правильный ответ."
 
-#: .\apps\quiz\forms.py:155 .\apps\quiz\forms.py:417 .\apps\quiz\forms.py:487
+#: .\apps\quiz\forms.py:168 .\apps\quiz\forms.py:442 .\apps\quiz\forms.py:512
 #: .\templates\quiz\result.html:85 .\templates\teacher\bank_sample.html:110
 msgid "Тақырып"
 msgstr "Тема"
 
-#: .\apps\quiz\forms.py:157 .\apps\quiz\forms.py:493
+#: .\apps\quiz\forms.py:170 .\apps\quiz\forms.py:518
 #: .\templates\teacher\bank.html:25 .\templates\teacher\bank_sample.html:111
 #: .\templates\teacher\question_list.html:30
 msgid "Тақырыпша"
 msgstr "Подтема"
 
-#: .\apps\quiz\forms.py:162 .\apps\quiz\forms.py:500
+#: .\apps\quiz\forms.py:175 .\apps\quiz\forms.py:525
 #: .\templates\quiz\result.html:60 .\templates\teacher\bank_sample.html:112
 #: .\templates\teacher\question_list.html:31
 msgid "Деңгей"
 msgstr "Уровень"
 
-#: .\apps\quiz\forms.py:167 .\apps\quiz\forms.py:318 .\apps\quiz\forms.py:505
+#: .\apps\quiz\forms.py:180 .\apps\quiz\forms.py:343 .\apps\quiz\forms.py:530
 #: .\templates\teacher\context_list.html:19
 #: .\templates\teacher\question_list.html:32
 #: .\templates\teacher\results.html:35
 msgid "Тіл"
 msgstr "Язык"
 
-#: .\apps\quiz\forms.py:170 .\templates\quiz\result.html:125
+#: .\apps\quiz\forms.py:183 .\templates\quiz\result.html:125
 #: .\templates\teacher\bank_sample.html:113
 #: .\templates\teacher\context_form.html:4
 msgid "Контекст"
 msgstr "Контекст"
 
-#: .\apps\quiz\forms.py:173
+#: .\apps\quiz\forms.py:186
 msgid "Жоқ (жеке сұрақ)"
 msgstr "Нет (отдельный вопрос)"
 
-#: .\apps\quiz\forms.py:176 .\templates\teacher\bank_sample.html:114
+#: .\apps\quiz\forms.py:189 .\templates\teacher\bank_sample.html:114
 msgid "Сұрақ мәтіні"
 msgstr "Текст вопроса"
 
-#: .\apps\quiz\forms.py:177 .\apps\quiz\forms.py:321
+#: .\apps\quiz\forms.py:190 .\apps\quiz\forms.py:346
 msgid "Код"
 msgstr "Код"
 
-#: .\apps\quiz\forms.py:184 .\apps\quiz\forms.py:328
+#: .\apps\quiz\forms.py:197 .\apps\quiz\forms.py:268 .\apps\quiz\forms.py:353
 msgid "Сурет"
 msgstr "Изображение"
 
-#: .\apps\quiz\forms.py:208
+#: .\apps\quiz\forms.py:222
 msgid "Бұл тақырыпша таңдалған тақырыпқа жатпайды."
 msgstr "Эта подтема не относится к выбранной теме."
 
-#: .\apps\quiz\forms.py:217
+#: .\apps\quiz\forms.py:231
 #, python-format
 msgid "Бұл контекстте %(count)s сұрақ бар, жаңасын қосуға болмайды."
 msgstr "В этом контексте уже %(count)s вопросов, добавить новый нельзя."
 
-#: .\apps\quiz\forms.py:246
+#: .\apps\quiz\forms.py:263
 msgid "Жауап нұсқасы"
 msgstr "Вариант ответа"
 
-#: .\apps\quiz\forms.py:281
+#: .\apps\quiz\forms.py:306
 msgid "Дұрыс жауапты белгілеңіз."
 msgstr "Отметьте правильный ответ."
 
-#: .\apps\quiz\forms.py:320 .\templates\teacher\question_list.html:33
+#: .\apps\quiz\forms.py:345 .\templates\teacher\question_list.html:33
 msgid "Мәтіні"
 msgstr "Текст"
 
-#: .\apps\quiz\forms.py:327 .\templates\teacher\context_list.html:18
+#: .\apps\quiz\forms.py:352 .\templates\teacher\context_list.html:18
 msgid "Атауы"
 msgstr "Название"
 
-#: .\apps\quiz\forms.py:329
+#: .\apps\quiz\forms.py:354
 msgid "Белсенді"
 msgstr "Активен"
 
-#: .\apps\quiz\forms.py:341
+#: .\apps\quiz\forms.py:366
 msgid ""
 "Бұл контекстке басқа тілдегі сұрақтар байланған, тілін өзгертуге болмайды."
 msgstr ""
 "К этому контексту привязаны вопросы на другом языке, язык изменить нельзя."
 
-#: .\apps\quiz\forms.py:378
+#: .\apps\quiz\forms.py:403
 #, python-format
 msgid "Бұл топтар басқа пәнге жатады: %(groups)s"
 msgstr "Эти группы относятся к другому предмету: %(groups)s"
 
-#: .\apps\quiz\forms.py:391 .\apps\quiz\services.py:819
+#: .\apps\quiz\forms.py:416 .\apps\quiz\services.py:827
 #: .\templates\quiz\dashboard.html:117
 msgid "Тест тілі"
 msgstr "Язык теста"
 
-#: .\apps\quiz\forms.py:420
+#: .\apps\quiz\forms.py:445
 msgid "Сұрақтар тілі"
 msgstr "Язык вопросов"
 
-#: .\apps\quiz\forms.py:436 .\apps\quiz\services.py:818
+#: .\apps\quiz\forms.py:461 .\apps\quiz\services.py:826
 #: .\templates\quiz\dashboard.html:116 .\templates\teacher\results.html:34
 msgid "Сессия"
 msgstr "Сессия"
 
-#: .\apps\quiz\forms.py:439
+#: .\apps\quiz\forms.py:464
 msgid "Барлық сессия"
 msgstr "Все сессии"
 
-#: .\apps\quiz\forms.py:442 .\apps\quiz\services.py:816
+#: .\apps\quiz\forms.py:467 .\apps\quiz\services.py:824
 #: .\templates\teacher\results.html:33
 msgid "Топ"
 msgstr "Группа"
 
-#: .\apps\quiz\forms.py:445
+#: .\apps\quiz\forms.py:470
 msgid "Барлық топ"
 msgstr "Все группы"
 
-#: .\apps\quiz\forms.py:490
+#: .\apps\quiz\forms.py:515
 msgid "Барлық тақырып"
 msgstr "Все темы"
 
-#: .\apps\quiz\forms.py:496
+#: .\apps\quiz\forms.py:521
 msgid "Барлық тақырыпша"
 msgstr "Все подтемы"
 
-#: .\apps\quiz\forms.py:501
+#: .\apps\quiz\forms.py:526
 msgid "Барлық деңгей"
 msgstr "Все уровни"
 
-#: .\apps\quiz\forms.py:506
+#: .\apps\quiz\forms.py:531
 msgid "Барлық тіл"
 msgstr "Все языки"
 
-#: .\apps\quiz\forms.py:509
+#: .\apps\quiz\forms.py:534
 msgid "Іздеу"
 msgstr "Поиск"
 
-#: .\apps\quiz\forms.py:518
+#: .\apps\quiz\forms.py:543
 msgid "Мәтін немесе код"
 msgstr "Текст или код"
 
-#: .\apps\quiz\models.py:14 .\config\settings.py:125
+#: .\apps\quiz\models.py:20 .\config\settings.py:125
 msgid "Қазақша"
 msgstr "Казахский"
 
-#: .\apps\quiz\models.py:15 .\config\settings.py:126
+#: .\apps\quiz\models.py:21 .\config\settings.py:126
 msgid "Орысша"
 msgstr "Русский"
 
-#: .\apps\quiz\models.py:21
+#: .\apps\quiz\models.py:27
 msgid "A — базалық"
 msgstr "A — базовый"
 
-#: .\apps\quiz\models.py:22
+#: .\apps\quiz\models.py:28
 msgid "B — орташа"
 msgstr "B — средний"
 
-#: .\apps\quiz\models.py:23
+#: .\apps\quiz\models.py:29
 msgid "C — жоғары"
 msgstr "C — высокий"
 
-#: .\apps\quiz\models.py:30
+#: .\apps\quiz\models.py:36
 msgid ""
 "A — базалық: қарапайым білім мен дағды, нұсқау бойынша әрекет, қарапайым "
 "ұғымдар"
 msgstr ""
 "A — базовый: простые знания и навыки, действия по инструкции, простые понятия"
 
-#: .\apps\quiz\models.py:34
+#: .\apps\quiz\models.py:40
 msgid ""
 "B — орташа: негізгі білімді жаңа жағдайда қолдану, деректерді талдау, "
 "салыстыру, жалпылау"
@@ -356,7 +360,7 @@ msgstr ""
 "B — средний: применение основных знаний в новой ситуации, анализ и сравнение "
 "данных, обобщение"
 
-#: .\apps\quiz\models.py:38
+#: .\apps\quiz\models.py:44
 msgid ""
 "C — жоғары: күрделі білімді біріктіру, күрделі деректерді талдау, тұжырымды "
 "негіздеу"
@@ -364,7 +368,7 @@ msgstr ""
 "C — высокий: интеграция сложных знаний, анализ сложной информации, "
 "обоснование выводов"
 
-#: .\apps\quiz\models.py:44
+#: .\apps\quiz\models.py:50
 msgid ""
 "Базалық деңгейдегі тест тапсырмалары қарапайым білім мен дағдыларын "
 "пайдалануға, түсушінің ең төменгі дайындық деңгейіне баға беруге, белгілі "
@@ -375,7 +379,7 @@ msgstr ""
 "оценке минимального уровня подготовки, выполнении действий по определённым "
 "инструкциям, использовании простых фактов и понятий."
 
-#: .\apps\quiz\models.py:50
+#: .\apps\quiz\models.py:56
 msgid ""
 "Орташа деңгейдегі тест тапсырмалары негізгі білім мен дағдыларын дұрыс "
 "пайдалануға, жаңа жағдайларда қарапайым модельдерді тануға, деректерді "
@@ -387,7 +391,7 @@ msgstr ""
 "сравнении данных, систематизации, умении обобщать информацию и делать выводы "
 "с опорой на факты."
 
-#: .\apps\quiz\models.py:56
+#: .\apps\quiz\models.py:62
 msgid ""
 "Жоғары деңгейдегі тест тапсырмалары неғұрлым күрделі білім мен дағдыларын "
 "пайдалануды, тапсырмалардың күрделі модельдерін тануды, мәселелерді шешу "
@@ -399,215 +403,224 @@ msgstr ""
 "для решения проблем, анализ сложной информации или данных, рассуждение и "
 "обоснование выводов."
 
-#: .\apps\quiz\models.py:78 .\apps\quiz\models.py:178 .\apps\quiz\models.py:217
+#: .\apps\quiz\models.py:74
+#, python-format
+msgid "Сурет тым үлкен: ең көбі %(size)s МБ."
+msgstr "Изображение слишком большое: не более %(size)s МБ."
+
+#: .\apps\quiz\models.py:104 .\apps\quiz\models.py:204
+#: .\apps\quiz\models.py:245
 msgid "коды"
 msgstr "код"
 
-#: .\apps\quiz\models.py:79 .\apps\quiz\models.py:113 .\apps\quiz\models.py:147
+#: .\apps\quiz\models.py:105 .\apps\quiz\models.py:139
+#: .\apps\quiz\models.py:173
 msgid "атауы (қаз)"
 msgstr "название (каз)"
 
-#: .\apps\quiz\models.py:80 .\apps\quiz\models.py:114 .\apps\quiz\models.py:148
+#: .\apps\quiz\models.py:106 .\apps\quiz\models.py:140
+#: .\apps\quiz\models.py:174
 msgid "атауы (орыс)"
 msgstr "название (рус)"
 
-#: .\apps\quiz\models.py:82
+#: .\apps\quiz\models.py:108
 msgid "тест уақыты (минут)"
 msgstr "время теста (минут)"
 
-#: .\apps\quiz\models.py:83
+#: .\apps\quiz\models.py:109
 msgid "формулалар қолданылады"
 msgstr "используются формулы"
 
-#: .\apps\quiz\models.py:84 .\apps\quiz\models.py:382
+#: .\apps\quiz\models.py:110 .\apps\quiz\models.py:417
 msgid "реті"
 msgstr "порядок"
 
-#: .\apps\quiz\models.py:85 .\apps\quiz\models.py:181 .\apps\quiz\models.py:220
-#: .\apps\quiz\models.py:300
+#: .\apps\quiz\models.py:111 .\apps\quiz\models.py:207
+#: .\apps\quiz\models.py:248 .\apps\quiz\models.py:335
 msgid "белсенді"
 msgstr "активен"
 
-#: .\apps\quiz\models.py:112 .\apps\quiz\models.py:146
+#: .\apps\quiz\models.py:138 .\apps\quiz\models.py:172
 msgid "нөмірі"
 msgstr "номер"
 
-#: .\apps\quiz\models.py:118 .\apps\quiz\models.py:144
+#: .\apps\quiz\models.py:144 .\apps\quiz\models.py:170
 msgid "тақырып"
 msgstr "тема"
 
-#: .\apps\quiz\models.py:119
+#: .\apps\quiz\models.py:145
 msgid "тақырыптар"
 msgstr "темы"
 
-#: .\apps\quiz\models.py:150
+#: .\apps\quiz\models.py:176
 msgid "сипаттамасы (қаз)"
 msgstr "описание (каз)"
 
-#: .\apps\quiz\models.py:154 .\apps\quiz\models.py:203
+#: .\apps\quiz\models.py:180 .\apps\quiz\models.py:229
 msgid "тақырыпша"
 msgstr "подтема"
 
-#: .\apps\quiz\models.py:155
+#: .\apps\quiz\models.py:181
 msgid "тақырыпшалар"
 msgstr "подтемы"
 
-#: .\apps\quiz\models.py:174 .\apps\quiz\models.py:213
+#: .\apps\quiz\models.py:200 .\apps\quiz\models.py:239
 msgid "тілі"
 msgstr "язык"
 
-#: .\apps\quiz\models.py:179 .\apps\quiz\models.py:215
+#: .\apps\quiz\models.py:205 .\apps\quiz\models.py:242
+#: .\apps\quiz\models.py:289
 msgid "суреті"
 msgstr "изображение"
 
-#: .\apps\quiz\models.py:180 .\apps\quiz\models.py:219
+#: .\apps\quiz\models.py:206 .\apps\quiz\models.py:247
 #: .\templates\teacher\context_list.html:30
 #: .\templates\teacher\question_form.html:14
 #: .\templates\teacher\question_list.html:48
 msgid "демо"
 msgstr "демо"
 
-#: .\apps\quiz\models.py:185 .\apps\quiz\models.py:211
+#: .\apps\quiz\models.py:211 .\apps\quiz\models.py:237
 #: .\templates\teacher\question_list.html:46
 msgid "контекст"
 msgstr "контекст"
 
-#: .\apps\quiz\models.py:186
+#: .\apps\quiz\models.py:212
 msgid "контексттер"
 msgstr "контексты"
 
-#: .\apps\quiz\models.py:214
+#: .\apps\quiz\models.py:240
 msgid "сұрақ мәтіні"
 msgstr "текст вопроса"
 
-#: .\apps\quiz\models.py:218
+#: .\apps\quiz\models.py:246
 msgid "деңгейі"
 msgstr "уровень"
 
-#: .\apps\quiz\models.py:224 .\apps\quiz\models.py:253
-#: .\apps\quiz\models.py:380
+#: .\apps\quiz\models.py:252 .\apps\quiz\models.py:284
+#: .\apps\quiz\models.py:415
 msgid "сұрақ"
 msgstr "вопрос"
 
-#: .\apps\quiz\models.py:237
+#: .\apps\quiz\models.py:265
 msgid "Контекст пен сұрақтың тілі бірдей болуы керек."
 msgstr "Язык контекста и вопроса должен совпадать."
 
-#: .\apps\quiz\models.py:242
+#: .\apps\quiz\models.py:270
 msgid "Контекст пен сұрақтың пәні бірдей болуы керек."
 msgstr "Предмет контекста и вопроса должен совпадать."
 
-#: .\apps\quiz\models.py:257 .\templates\quiz\_question_body.html:11
+#: .\apps\quiz\models.py:291 .\templates\quiz\_question_body.html:12
 #: .\templates\quiz\practice_question.html:26 .\templates\quiz\result.html:144
 msgid "дұрыс"
 msgstr "правильный"
 
-#: .\apps\quiz\models.py:261
+#: .\apps\quiz\models.py:295
 msgid "жауап нұсқасы"
 msgstr "вариант ответа"
 
-#: .\apps\quiz\models.py:262
+#: .\apps\quiz\models.py:296
 msgid "жауап нұсқалары"
 msgstr "варианты ответа"
 
-#: .\apps\quiz\models.py:275
+#: .\apps\quiz\models.py:310
 msgid "Тест аяқталған бойда"
 msgstr "Сразу после завершения теста"
 
-#: .\apps\quiz\models.py:276
+#: .\apps\quiz\models.py:311
 msgid "Сессия жабылғаннан кейін"
 msgstr "После закрытия сессии"
 
-#: .\apps\quiz\models.py:285
+#: .\apps\quiz\models.py:320
 msgid "ашылу уақыты"
 msgstr "время открытия"
 
-#: .\apps\quiz\models.py:286
+#: .\apps\quiz\models.py:321
 msgid "жабылу уақыты"
 msgstr "время закрытия"
 
-#: .\apps\quiz\models.py:295
+#: .\apps\quiz\models.py:330
 msgid "дұрыс жауаптарды көрсету"
 msgstr "показ правильных ответов"
 
-#: .\apps\quiz\models.py:304
+#: .\apps\quiz\models.py:339
 msgid "тест сессиясы"
 msgstr "тестовая сессия"
 
-#: .\apps\quiz\models.py:305
+#: .\apps\quiz\models.py:340
 msgid "тест сессиялары"
 msgstr "тестовые сессии"
 
-#: .\apps\quiz\models.py:313
+#: .\apps\quiz\models.py:348
 msgid "Жабылу уақыты ашылу уақытынан кейін болуы керек."
 msgstr "Время закрытия должно быть позже времени открытия."
 
-#: .\apps\quiz\models.py:324
+#: .\apps\quiz\models.py:359
 msgid "Жүріп жатыр"
 msgstr "В процессе"
 
-#: .\apps\quiz\models.py:325 .\apps\quiz\services.py:821
+#: .\apps\quiz\models.py:360 .\apps\quiz\services.py:829
 msgid "Аяқталды"
 msgstr "Завершён"
 
-#: .\apps\quiz\models.py:331
+#: .\apps\quiz\models.py:366
 msgid "студент"
 msgstr "студент"
 
-#: .\apps\quiz\models.py:337
+#: .\apps\quiz\models.py:372
 msgid "сессия"
 msgstr "сессия"
 
-#: .\apps\quiz\models.py:339
+#: .\apps\quiz\models.py:374
 msgid "тест тілі"
 msgstr "язык теста"
 
-#: .\apps\quiz\models.py:340
+#: .\apps\quiz\models.py:375
 msgid "басталған уақыты"
 msgstr "время начала"
 
-#: .\apps\quiz\models.py:343
+#: .\apps\quiz\models.py:378
 msgid "мерзімі"
 msgstr "срок"
 
-#: .\apps\quiz\models.py:344
+#: .\apps\quiz\models.py:379
 msgid "аяқталған уақыты"
 msgstr "время завершения"
 
-#: .\apps\quiz\models.py:345
+#: .\apps\quiz\models.py:380
 msgid "балы"
 msgstr "балл"
 
-#: .\apps\quiz\models.py:347
+#: .\apps\quiz\models.py:382
 msgid "күйі"
 msgstr "статус"
 
-#: .\apps\quiz\models.py:355 .\apps\quiz\models.py:374
+#: .\apps\quiz\models.py:390 .\apps\quiz\models.py:409
 msgid "тест әрекеті"
 msgstr "попытка теста"
 
-#: .\apps\quiz\models.py:356
+#: .\apps\quiz\models.py:391
 msgid "тест әрекеттері"
 msgstr "попытки теста"
 
-#: .\apps\quiz\models.py:384
+#: .\apps\quiz\models.py:419
 msgid "нұсқалар реті"
 msgstr "порядок вариантов"
 
-#: .\apps\quiz\models.py:392 .\templates\quiz\practice_question.html:25
+#: .\apps\quiz\models.py:427 .\templates\quiz\practice_question.html:25
 #: .\templates\quiz\result.html:143
 msgid "таңдалған жауап"
 msgstr "выбранный ответ"
 
-#: .\apps\quiz\models.py:397
+#: .\apps\quiz\models.py:432
 msgid "нұсқадағы сұрақ"
 msgstr "вопрос варианта"
 
-#: .\apps\quiz\models.py:398
+#: .\apps\quiz\models.py:433
 msgid "нұсқадағы сұрақтар"
 msgstr "вопросы варианта"
 
-#: .\apps\quiz\services.py:315
+#: .\apps\quiz\services.py:318
 #, python-format
 msgid ""
 "Банкте «%(language)s» тіліндегі сұрақтар жеткіліксіз, тестті бастау мүмкін "
@@ -616,45 +629,45 @@ msgstr ""
 "В банке недостаточно вопросов на языке «%(language)s», начать тест "
 "невозможно. Сообщите преподавателю."
 
-#: .\apps\quiz\services.py:581 .\templates\quiz\session_start.html:43
+#: .\apps\quiz\services.py:584 .\templates\quiz\session_start.html:43
 msgid "Бұл сессия қазір ашық емес."
 msgstr "Эта сессия сейчас не открыта."
 
-#: .\apps\quiz\services.py:583 .\apps\quiz\services.py:599
+#: .\apps\quiz\services.py:586 .\apps\quiz\services.py:602
 msgid "Сіз бұл сессияда тестті бұрын бастағансыз."
 msgstr "Вы уже начинали тест в этой сессии."
 
-#: .\apps\quiz\services.py:814 .\templates\teacher\results.html:32
+#: .\apps\quiz\services.py:822 .\templates\teacher\results.html:32
 msgid "Студент"
 msgstr "Студент"
 
-#: .\apps\quiz\services.py:817 .\templates\teacher\_subject_switcher.html:6
+#: .\apps\quiz\services.py:825 .\templates\teacher\_subject_switcher.html:6
 #: .\templates\teacher\_subject_switcher.html:18
 msgid "Пән"
 msgstr "Предмет"
 
-#: .\apps\quiz\services.py:820 .\templates\teacher\results.html:36
+#: .\apps\quiz\services.py:828 .\templates\teacher\results.html:36
 msgid "Басталды"
 msgstr "Начат"
 
-#: .\apps\quiz\services.py:822
+#: .\apps\quiz\services.py:830
 msgid "Күйі"
 msgstr "Статус"
 
-#: .\apps\quiz\services.py:823 .\templates\quiz\result.html:32
+#: .\apps\quiz\services.py:831 .\templates\quiz\result.html:32
 #: .\templates\teacher\results.html:37
 msgid "Балл"
 msgstr "Балл"
 
-#: .\apps\quiz\services.py:824 .\templates\quiz\result.html:38
+#: .\apps\quiz\services.py:832 .\templates\quiz\result.html:38
 msgid "Пайыз"
 msgstr "Процент"
 
-#: .\apps\quiz\services.py:825 .\templates\teacher\results.html:39
+#: .\apps\quiz\services.py:833 .\templates\teacher\results.html:39
 msgid "Уақыт (мин)"
 msgstr "Время (мин)"
 
-#: .\apps\quiz\services.py:971
+#: .\apps\quiz\services.py:979
 msgid "Бұл тақырып бойынша таңдалған тілде сұрақ әлі жоқ."
 msgstr "По этой теме на выбранном языке пока нет вопросов."
 
@@ -666,22 +679,22 @@ msgstr "Вопрос сохранён. Введите следующий."
 msgid "Сұрақ сақталды."
 msgstr "Вопрос сохранён."
 
-#: .\apps\quiz\teacher_views.py:194
+#: .\apps\quiz\teacher_views.py:201
 msgid "Көшірмесі жасалды, қажет болса өңдеңіз."
 msgstr "Копия создана, при необходимости отредактируйте её."
 
-#: .\apps\quiz\teacher_views.py:206
+#: .\apps\quiz\teacher_views.py:213
 #, python-format
 msgid ""
 "Контекстте %(count)s белсенді сұрақ бар, бұл сұрақты белсендіруге болмайды."
 msgstr ""
 "В контексте уже %(count)s активных вопросов, этот вопрос активировать нельзя."
 
-#: .\apps\quiz\teacher_views.py:236
+#: .\apps\quiz\teacher_views.py:243
 msgid "Контекст сақталды."
 msgstr "Контекст сохранён."
 
-#: .\apps\quiz\views.py:128 .\apps\quiz\views.py:244
+#: .\apps\quiz\views.py:128 .\apps\quiz\views.py:253
 msgid "Жауап нұсқасын таңдаңыз."
 msgstr "Выберите вариант ответа."
 
@@ -689,13 +702,13 @@ msgstr "Выберите вариант ответа."
 msgid "Тест уақыты бітті, жауап қабылданбады."
 msgstr "Время теста истекло, ответ не принят."
 
-#: .\apps\quiz\views.py:250
+#: .\apps\quiz\views.py:259
 msgid "Сұрақ банктен өшірілген. Жаттығуды қайта бастаңыз."
 msgstr "Вопрос удалён из банка. Начните тренировку заново."
 
 #: .\templates\accounts\login.html:4 .\templates\accounts\login.html:10
 #: .\templates\accounts\login.html:18 .\templates\accounts\register.html:20
-#: .\templates\base.html:96 .\templates\quiz\home.html:32
+#: .\templates\base.html:103 .\templates\quiz\home.html:32
 msgid "Кіру"
 msgstr "Войти"
 
@@ -705,7 +718,7 @@ msgstr "Ещё не зарегистрированы?"
 
 #: .\templates\accounts\login.html:21 .\templates\accounts\register.html:4
 #: .\templates\accounts\register.html:10 .\templates\accounts\register.html:17
-#: .\templates\base.html:97 .\templates\quiz\home.html:33
+#: .\templates\base.html:104 .\templates\quiz\home.html:33
 msgid "Тіркелу"
 msgstr "Регистрация"
 
@@ -717,49 +730,49 @@ msgstr "Уже зарегистрированы?"
 msgid "ПББ тест платформасы"
 msgstr "Платформа тестов ОЗП"
 
-#: .\templates\base.html:35
+#: .\templates\base.html:42
 msgid "ПББ тест"
 msgstr "Тест ОЗП"
 
-#: .\templates\base.html:37
+#: .\templates\base.html:44
 msgid "Мәзір"
 msgstr "Меню"
 
-#: .\templates\base.html:46 .\templates\quiz\_practice_navigation.html:3
+#: .\templates\base.html:53 .\templates\quiz\_practice_navigation.html:3
 #: .\templates\quiz\question.html:18 .\templates\teacher\context_list.html:20
 #: .\templates\teacher\question_list.html:4
 #: .\templates\teacher\question_list.html:9
 msgid "Сұрақтар"
 msgstr "Вопросы"
 
-#: .\templates\base.html:49 .\templates\teacher\bank.html:63
+#: .\templates\base.html:56 .\templates\teacher\bank.html:63
 #: .\templates\teacher\context_list.html:4
 #: .\templates\teacher\context_list.html:9
 msgid "Контексттер"
 msgstr "Контексты"
 
-#: .\templates\base.html:52
+#: .\templates\base.html:59
 msgid "Банк"
 msgstr "Банк"
 
-#: .\templates\base.html:55 .\templates\teacher\results.html:4
+#: .\templates\base.html:62 .\templates\teacher\results.html:4
 #: .\templates\teacher\results.html:8
 msgid "Нәтижелер"
 msgstr "Результаты"
 
-#: .\templates\base.html:58
+#: .\templates\base.html:65
 msgid "Admin"
 msgstr "Admin"
 
-#: .\templates\base.html:62 .\templates\quiz\dashboard.html:4
+#: .\templates\base.html:69 .\templates\quiz\dashboard.html:4
 msgid "Кабинет"
 msgstr "Кабинет"
 
-#: .\templates\base.html:65
+#: .\templates\base.html:72
 msgid "Жаттығу"
 msgstr "Тренировка"
 
-#: .\templates\base.html:93
+#: .\templates\base.html:100
 msgid "Шығу"
 msgstr "Выйти"
 
@@ -792,7 +805,9 @@ msgstr "Тренировка по теме"
 msgid ""
 "Сіздің тобыңыз көрсетілмеген, сондықтан тест сессиялары көрінбейді. "
 "Оқытушыға хабарласыңыз."
-msgstr "Ваша группа не указана, поэтому тестовые сессии не видны. Обратитесь к преподавателю."
+msgstr ""
+"Ваша группа не указана, поэтому тестовые сессии не видны. Обратитесь к "
+"преподавателю."
 
 #: .\templates\quiz\dashboard.html:29
 msgid "Ашық сессиялар"
@@ -915,7 +930,9 @@ msgstr "Подготовка к тесту ОЗП"
 msgid ""
 "Тест нақты форматта өтеді: %(questions_total)s сұрақ, уақыты пәнге "
 "байланысты."
-msgstr "Тест проходит в реальном формате: %(questions_total)s вопросов, время зависит от предмета."
+msgstr ""
+"Тест проходит в реальном формате: %(questions_total)s вопросов, время "
+"зависит от предмета."
 
 #: .\templates\quiz\home.html:21
 #, python-format
@@ -1018,7 +1035,8 @@ msgstr ""
 msgid ""
 "Сіздің тобыңыз көрсетілмеген, сондықтан тақырыптар көрінбейді. Оқытушыға "
 "хабарласыңыз."
-msgstr "Ваша группа не указана, поэтому темы не видны. Обратитесь к преподавателю."
+msgstr ""
+"Ваша группа не указана, поэтому темы не видны. Обратитесь к преподавателю."
 
 #: .\templates\quiz\practice_start.html:35
 msgid "Жаттығуды бастау"
@@ -1034,7 +1052,7 @@ msgid "Жауап берілмеген сұрақтар: %(unanswered_count)s / 
 msgstr "Вопросов без ответа: %(unanswered_count)s / %(total)s"
 
 #: .\templates\quiz\question.html:46 .\templates\teacher\context_form.html:29
-#: .\templates\teacher\question_form.html:65
+#: .\templates\teacher\question_form.html:84
 msgid "Сақтау"
 msgstr "Сохранить"
 
@@ -1319,19 +1337,43 @@ msgstr "Новый вопрос"
 msgid "Сұрақ №%(id)s"
 msgstr "Вопрос №%(id)s"
 
+#: .\templates\teacher\question_form.html:36
+msgid "Формула: жол ішінде"
+msgstr "Формула: внутри строки"
+
+#: .\templates\teacher\question_form.html:36
+msgid "бөлек жолда"
+msgstr "отдельной строкой"
+
+#: .\templates\teacher\question_form.html:37
+msgid "Мысалдар:"
+msgstr "Примеры:"
+
 #: .\templates\teacher\question_form.html:40
+msgid ""
+"Формула мәтінде, контекстте және жауап нұсқаларында жұмыс істейді; "
+"сақтағаннан кейін алдын ала қарауда дайын түрінде көрінеді."
+msgstr "Формулы работают в тексте вопроса, контексте и вариантах ответа; после сохранения в предпросмотре они видны в готовом виде."
+
+#: .\templates\teacher\question_form.html:50
 msgid "Жауап нұсқалары"
 msgstr "Варианты ответа"
 
-#: .\templates\teacher\question_form.html:41
-msgid "дұрысын радио-батырмамен белгілеңіз"
-msgstr "отметьте правильный радиокнопкой"
+#: .\templates\teacher\question_form.html:51
+msgid ""
+"дұрысын радио-батырмамен белгілеңіз; әр нұсқада мәтін немесе сурет болуы "
+"керек"
+msgstr "отметьте правильный радиокнопкой; в каждом варианте должен быть текст или изображение"
 
-#: .\templates\teacher\question_form.html:66
+#: .\templates\teacher\question_form.html:72
+msgid "Сурет (jpg, png, webp, 2 МБ-қа дейін):"
+msgstr "Изображение (jpg, png, webp, до 2 МБ):"
+
+#: .\templates\teacher\question_form.html:85
 msgid "Сақтап, келесісін қосу"
 msgstr "Сохранить и добавить следующий"
 
-#: .\templates\teacher\question_form.html:74
+#: .\templates\teacher\question_form.html:93
 msgid "Алдын ала қарау (студент осылай көреді)"
 msgstr "Предпросмотр (так увидит студент)"
 

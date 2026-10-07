@@ -6,8 +6,9 @@
 <div class="list-group">
     {% for answer in answers %}
         <div class="list-group-item d-flex gap-2{% if show_correct and answer.is_correct %} list-group-item-success{% endif %}">
-            <span class="fw-semibold">{% cycle "A" "B" "C" "D" %})</span>
-            <pre class="answer-text flex-grow-1">{{ answer.text }}</pre>
+            {% cycle "A" "B" "C" "D" as letter silent %}
+            <span class="fw-semibold">{{ letter }})</span>
+            {% include "quiz/_answer_content.html" %}
             {% if show_correct and answer.is_correct %}<span class="badge text-bg-success align-self-start">{% translate "дұрыс" %}</span>{% endif %}
         </div>
     {% endfor %}

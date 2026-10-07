@@ -1,23 +1,30 @@
+import atexit
+import os
 import random
 import re
+import shutil
+import tempfile
 from collections import Counter
 from datetime import timedelta
-from io import StringIO
+from io import BytesIO, StringIO
 from unittest import mock
 
 from django.conf import settings
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
+from django.core.files.storage import default_storage
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.db import IntegrityError, connection
 from django.db.migrations.executor import MigrationExecutor
 from django.forms import inlineformset_factory
-from django.test import TestCase, TransactionTestCase
+from django.test import TestCase, TransactionTestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.html import escape
 from django.utils.translation import override
+from PIL import Image
 
 from apps.accounts.models import StudyGroup
 
@@ -32,6 +39,7 @@ from .constants import (
     QUESTIONS_TOTAL,
     SINGLE_QUESTIONS_PER_SUBTOPIC,
     INFORMATICS_CODE,
+    MAX_IMAGE_MB,
     SUBTOPICS_COUNT,
 )
 from .forms import AnswerInlineFormSet, ExamSessionAdminForm
@@ -524,7 +532,7 @@ class QuestionFormPageTests(TeacherTestCase):
         )
         self.assertContains(response, f'<pre class="code-block">{escape(code)}</pre>')
         self.assertContains(
-            response, f'<pre class="answer-text flex-grow-1">{escape(answer_code)}</pre>'
+            response, f'<pre class="answer-text">{escape(answer_code)}</pre>'
         )
         # Өңдеу формасының textarea өрісінде де шегіністер сақталады
         self.assertContains(response, f">\n{escape(code)}</textarea>")
@@ -1470,7 +1478,7 @@ class QuestionPageTests(TakeTestCase):
                 self.assertNotContains(response, "дұрыс</span>")
                 # Шаблонға тек мәтін мен id жетеді
                 for answer in response.context["answers"]:
-                    self.assertEqual(set(answer), {"letter", "id", "text"})
+                    self.assertEqual(set(answer), {"letter", "id", "text", "image"})
         # Аяқтау беті де дұрыс жауапты көрсетпейді
         response = self.client.get(reverse("quiz:attempt_finish", args=[self.attempt.pk]))
         self.assertNotContains(response, "list-group-item-success")
@@ -3173,3 +3181,338 @@ class HomeSubjectsTests(TestCase):
         self.assertEqual(len(response.context["subjects"]), 4)
         self.assertContains(response, "80 минут")
         self.assertContains(response, "125 минут")
+
+
+# ---------- 12-кезең: формулалар, жауаптағы суреттер, әр пәнге демо ----------
+
+# Сурет жүктейтін тесттер файлдарды уақытша папкаға жазады (media/ ластанбайды)
+TEST_MEDIA_ROOT = tempfile.mkdtemp(prefix="ozp-test-media-")
+atexit.register(shutil.rmtree, TEST_MEDIA_ROOT, ignore_errors=True)
+
+
+def png_file(name="answer.png", big=False):
+    """Жүктеуге арналған PNG сурет; big=True — 2 МБ-тан үлкен (кездейсоқ нүктелер, сығылмайды)."""
+    buffer = BytesIO()
+    if big:
+        side = 1100
+        Image.frombytes("RGB", (side, side), os.urandom(side * side * 3)).save(buffer, "PNG")
+    else:
+        Image.new("RGB", (40, 30), "red").save(buffer, format="PNG")
+    return SimpleUploadedFile(name, buffer.getvalue(), content_type="image/png")
+
+
+@override_settings(MEDIA_ROOT=TEST_MEDIA_ROOT)
+class AnswerImageFormTests(TeacherTestCase):
+    def answer_data(self, **overrides):
+        data = self.question_data()
+        data.update(overrides)
+        return data
+
+    def post(self, data):
+        return self.client.post(reverse("quiz:teacher_question_create"), data)
+
+    def test_image_only_answer_is_accepted(self):
+        data = self.answer_data(**{"answers-1-text": ""})
+        data["answers-1-image"] = png_file("correct-answer.png")
+        response = self.post(data)
+        self.assertEqual(response.status_code, 302)
+        answer = Answer.objects.get(text="")
+        self.assertTrue(answer.image)
+        # Файл аты кездейсоқ: бастапқы атауынан ештеңе қалмайды
+        self.assertTrue(answer.image.name.startswith("answers/"))
+        self.assertNotIn("correct", answer.image.name)
+        self.assertRegex(answer.image.name, r"^answers/[0-9a-f]{32}\.png$")
+
+    def test_answer_without_text_and_image_is_rejected(self):
+        response = self.post(self.answer_data(**{"answers-2-text": "   "}))
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(
+            "Әр жауап нұсқасында мәтін немесе сурет болуы керек.",
+            str(response.context["formset"].forms[2].non_field_errors()),
+        )
+        self.assertFalse(Question.objects.exists())
+
+    def test_text_and_image_together(self):
+        data = self.answer_data()
+        data["answers-0-image"] = png_file()
+        self.assertEqual(self.post(data).status_code, 302)
+        answer = Answer.objects.get(text="ENIAC")
+        self.assertTrue(answer.image)
+
+    def test_large_answer_image_is_rejected(self):
+        image = png_file("big.png", big=True)
+        self.assertGreater(image.size, MAX_IMAGE_MB * 1024 * 1024)
+        data = self.answer_data()
+        data["answers-3-image"] = image
+        response = self.post(data)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("2 МБ", str(response.context["formset"].forms[3].errors["image"]))
+        self.assertFalse(Question.objects.exists())
+
+    def test_wrong_format_is_rejected(self):
+        gif = BytesIO()
+        Image.new("RGB", (10, 10), "red").save(gif, format="GIF")
+        data = self.answer_data(**{"answers-3-text": ""})
+        data["answers-3-image"] = SimpleUploadedFile("a.gif", gif.getvalue(), "image/gif")
+        response = self.post(data)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("image", response.context["formset"].forms[3].errors)
+        self.assertFalse(Question.objects.exists())
+
+    def test_question_image_size_limit(self):
+        data = self.answer_data()
+        data["image"] = png_file("question.png", big=True)
+        response = self.post(data)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("image", response.context["form"].errors)
+
+    def test_form_shows_image_inputs(self):
+        response = self.client.get(reverse("quiz:teacher_question_create"))
+        self.assertContains(response, 'name="answers-0-image"')
+        self.assertContains(response, 'accept="image/jpeg,image/png,image/webp"')
+
+    def test_admin_inline_requires_text_or_image(self):
+        formset_class = inlineformset_factory(
+            Question,
+            Answer,
+            formset=AnswerInlineFormSet,
+            fields=["text", "image", "is_correct"],
+            extra=ANSWERS_PER_QUESTION,
+        )
+        question = self.create_question()
+        question.answers.all().delete()
+        data = {"answers-TOTAL_FORMS": "4", "answers-INITIAL_FORMS": "0"}
+        for index in range(3):
+            data[f"answers-{index}-text"] = str(index)
+        data["answers-0-is_correct"] = "on"
+        data["answers-3-is_correct"] = ""
+        data["answers-3-text"] = ""
+        # 4-жол: «дұрыс» белгісі жоқ, мәтін де, сурет те жоқ — бос жол (саналмайды)
+        formset = formset_class(data, instance=question, prefix="answers")
+        self.assertFalse(formset.is_valid())
+        files = {"answers-3-image": png_file()}
+        formset = formset_class(data, files, instance=question, prefix="answers")
+        self.assertTrue(formset.is_valid(), formset.non_form_errors())
+
+
+@override_settings(MEDIA_ROOT=TEST_MEDIA_ROOT)
+class AnswerImageDisplayTests(TakeTestCase):
+    def test_answer_image_is_shown_with_limited_height(self):
+        attempt = self.new_attempt()
+        item = attempt.items.get(order=1)
+        answer = Answer.objects.get(pk=item.answer_order[0])
+        answer.image.save("x.png", png_file(), save=True)
+        response = self.client.get(self.question_url(attempt, 1))
+        self.assertContains(response, f'src="{answer.image.url}" class="answer-image"')
+        # Басқанда толық өлшемде ашылады
+        self.assertContains(response, f'<a href="{answer.image.url}" target="_blank"')
+
+
+class FormulaTests(StudentSubjectTestCase):
+    """KaTeX тек формуласы бар пәннің (математика) сұрақ беттерінде қосылады."""
+
+    def setUp(self):
+        super().setUp()
+        self.subtopic = Subtopic.objects.get(topic__subject=self.mathematics, number=1)
+        self.question = Question.objects.create(
+            subtopic=self.subtopic, language="kk", text="Есептеңіз: \\(\\frac{1}{2} < a\\)", level="A"
+        )
+        for index, text in enumerate(["\\(\\sqrt{x}\\)", "2", "3", "4"]):
+            Answer.objects.create(question=self.question, text=text, is_correct=index == 0)
+
+    def make_attempt(self, student, session):
+        attempt = Attempt.objects.create(
+            user=student, session=session, language="kk", deadline=session.closes_at
+        )
+        AttemptQuestion.objects.create(
+            attempt=attempt,
+            question=self.question,
+            order=1,
+            answer_order=list(self.question.answers.values_list("id", flat=True)),
+        )
+        return attempt
+
+    def test_math_question_page_loads_katex_and_keeps_text(self):
+        session = self.session_for(self.mathematics)
+        attempt = self.make_attempt(self.student, session)
+        response = self.client.get(reverse("quiz:attempt_question", args=[attempt.pk, 1]))
+        self.assertContains(response, "katex.min.js")
+        self.assertContains(response, "js/formulas.js")
+        # Мәтін өзгеріссіз, autoescape сақталады
+        self.assertContains(response, "Есептеңіз: \\(\\frac{1}{2} &lt; a\\)")
+        self.assertContains(response, "\\(\\sqrt{x}\\)")
+
+    def test_informatics_pages_do_not_load_katex(self):
+        inf_student = make_student(username="inf", group=self.inf_group)
+        inf_question = Question.objects.create(
+            subtopic=Subtopic.objects.get(topic__subject=self.informatics, number=1),
+            language="kk",
+            text="Мәтін \\(x\\)",
+            level="A",
+        )
+        for index in range(ANSWERS_PER_QUESTION):
+            Answer.objects.create(question=inf_question, text=str(index), is_correct=index == 0)
+        session = self.session_for(self.informatics)
+        attempt = Attempt.objects.create(
+            user=inf_student, session=session, language="kk", deadline=session.closes_at
+        )
+        AttemptQuestion.objects.create(
+            attempt=attempt,
+            question=inf_question,
+            order=1,
+            answer_order=list(inf_question.answers.values_list("id", flat=True)),
+        )
+        self.client.force_login(inf_student)
+        response = self.client.get(reverse("quiz:attempt_question", args=[attempt.pk, 1]))
+        self.assertNotContains(response, "katex")
+        self.assertContains(response, "Мәтін \\(x\\)")
+
+    def test_result_and_practice_load_katex(self):
+        session = self.session_for(self.mathematics)
+        attempt = self.make_attempt(self.student, session)
+        finish_attempt(attempt)
+        response = self.client.get(reverse("quiz:attempt_result", args=[attempt.pk]))
+        self.assertContains(response, "katex.min.js")
+
+        self.client.post(
+            reverse("quiz:practice_start"), {"topic": self.subtopic.topic_id, "language": "kk"}
+        )
+        response = self.client.get(reverse("quiz:practice_question", args=[1]))
+        self.assertContains(response, "katex.min.js")
+
+    def test_teacher_form_shows_formula_hint_only_for_math(self):
+        teacher = make_teacher(username="math", subjects=[self.mathematics])
+        self.client.force_login(teacher)
+        response = self.client.get(
+            reverse("quiz:teacher_question_edit", args=[self.question.pk])
+        )
+        self.assertContains(response, "<code>\\(\\frac{a}{b}\\)</code>")
+        self.assertContains(response, "katex.min.js")
+
+        teacher = make_teacher(username="inf", subjects=[self.informatics])
+        self.client.force_login(teacher)
+        response = self.client.get(reverse("quiz:teacher_question_create"))
+        self.assertNotContains(response, "\\(\\frac{a}{b}\\)")
+        self.assertNotContains(response, "katex")
+
+
+@override_settings(MEDIA_ROOT=TEST_MEDIA_ROOT)
+class DemoAllSubjectsTests(TestCase):
+    """Әр пәнге демо деректер: 4 пәннің әрқайсында толық нұсқа құрылады (TZ.md, 10.9)."""
+
+    @classmethod
+    def setUpTestData(cls):
+        run_command("load_subjects")
+        run_command("load_demo")
+
+    def test_variant_for_every_subject_and_language(self):
+        for subject in Subject.objects.all():
+            for language in ["kk", "ru"]:
+                with self.subTest(subject=subject.code, language=language):
+                    ids = build_variant(subject, language, random.Random(1))
+                    questions = list(
+                        Question.objects.filter(pk__in=ids).select_related("subtopic__topic")
+                    )
+                    self.assertEqual(len(questions), QUESTIONS_TOTAL)
+                    self.assertEqual(
+                        {question.subtopic.topic.subject_id for question in questions},
+                        {subject.pk},
+                    )
+                    self.assertEqual({question.language for question in questions}, {language})
+                    self.assertEqual(Counter(q.level for q in questions), Counter(LEVEL_QUOTA))
+                    singles = Counter(
+                        q.subtopic.number for q in questions if q.context_id is None
+                    )
+                    self.assertEqual(set(singles.values()), {SINGLE_QUESTIONS_PER_SUBTOPIC})
+                    self.assertEqual(len(singles), SUBTOPICS_COUNT)
+                    contexts = Counter(q.context_id for q in questions if q.context_id)
+                    self.assertEqual(sorted(contexts.values()), [QUESTIONS_PER_CONTEXT] * 2)
+
+    def test_demo_contexts_belong_to_subject(self):
+        for context in Context.objects.prefetch_related("questions__subtopic__topic"):
+            for question in context.questions.all():
+                self.assertEqual(question.subtopic.topic.subject_id, context.subject_id)
+
+    def test_math_demo_has_formulas_and_image_answers(self):
+        math_questions = Question.objects.filter(subtopic__topic__subject__code="mathematics")
+        self.assertTrue(math_questions.filter(text__contains="\\(").exists())
+        image_question = math_questions.get(language="kk", text="Суреттегі қай фигура — ромб?")
+        answers = list(image_question.answers.all())
+        self.assertEqual(len(answers), ANSWERS_PER_QUESTION)
+        self.assertTrue(all(answer.image and not answer.text for answer in answers))
+        self.assertEqual(sum(answer.is_correct for answer in answers), 1)
+        self.assertNotIn("rhombus", "".join(answer.image.name for answer in answers))
+        self.assertTrue(Context.objects.filter(text__contains="\\(f(x)").exists())
+
+    def test_second_run_does_not_duplicate(self):
+        count = Question.objects.count()
+        run_command("load_demo")
+        self.assertEqual(Question.objects.count(), count)
+
+    def test_delete_one_subject(self):
+        image_names = list(
+            Answer.objects.filter(question__subtopic__topic__subject__code="mathematics")
+            .exclude(image="")
+            .values_list("image", flat=True)
+        )
+        run_command("load_demo", "--delete", "--subject", "mathematics")
+        self.assertFalse(
+            Question.objects.filter(subtopic__topic__subject__code="mathematics").exists()
+        )
+        self.assertFalse(Context.objects.filter(subject__code="mathematics").exists())
+        self.assertTrue(
+            Question.objects.filter(subtopic__topic__subject__code="informatics").exists()
+        )
+        # Демо суреттердің файлдары да өшті
+        self.assertTrue(image_names)
+        self.assertFalse(any(default_storage.exists(name) for name in image_names))
+
+
+@override_settings(MEDIA_ROOT=TEST_MEDIA_ROOT)
+class DemoOneSubjectTests(TestCase):
+    def test_load_one_subject(self):
+        run_command("load_subjects")
+        run_command("load_demo", "--subject", "art_labor_girls")
+        subjects = set(
+            Question.objects.values_list("subtopic__topic__subject__code", flat=True)
+        )
+        self.assertEqual(subjects, {"art_labor_girls"})
+
+    def test_subject_without_topics(self):
+        with self.assertRaises(CommandError):
+            run_command("load_demo", "--subject", "informatics")
+        with self.assertRaises(CommandError):
+            run_command("load_demo", "--subject", "physics")
+
+
+class LoadtestDataSubjectTests(TestCase):
+    def test_subject_option(self):
+        run_command("load_subjects")
+        run_command("loadtest_data", "--count", "2", "--subject", "mathematics")
+        group = StudyGroup.objects.get(name="LOADTEST")
+        session = ExamSession.objects.get(title=LOADTEST_SESSION_TITLE)
+        self.assertEqual(group.subject.code, "mathematics")
+        self.assertEqual(session.subject.code, "mathematics")
+        student = User.objects.get(username="student001")
+        self.assertEqual(list(visible_sessions(student)), [session])
+
+        # Қайта іске қосқанда пән ауысады
+        run_command("loadtest_data", "--count", "2")
+        group.refresh_from_db()
+        session.refresh_from_db()
+        self.assertEqual(group.subject.code, "informatics")
+        self.assertEqual(session.subject.code, "informatics")
+
+    def test_unknown_subject(self):
+        with self.assertRaises(CommandError):
+            run_command("loadtest_data", "--subject", "physics")
+
+
+class FormulaScriptTests(TestCase):
+    def test_delimiters_are_escaped_in_js(self):
+        # JS-те "\\(" деп жазылуы керек (= \( ). "\(" деп жазылса, JS оны жай "("
+        # деп оқиды да, кез келген жақшадағы мәтін формула болып көрсетіледі
+        script = (settings.BASE_DIR / "static" / "js" / "formulas.js").read_text(encoding="utf-8")
+        for delimiter in [r'"\\("', r'"\\)"', r'"\\["', r'"\\]"']:
+            self.assertIn(delimiter, script)
+        self.assertNotIn(r'"\("', script)

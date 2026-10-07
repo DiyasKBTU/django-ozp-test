@@ -21,7 +21,7 @@
             {% for answer in answers %}
                 <div class="list-group-item d-flex gap-2{% if answer.is_correct %} list-group-item-success{% elif answer.is_selected %} list-group-item-danger{% endif %}">
                     <span class="fw-semibold">{{ answer.letter }})</span>
-                    <pre class="answer-text flex-grow-1">{{ answer.text }}</pre>
+                    {% include "quiz/_answer_content.html" with letter=answer.letter %}
                     {% if answer.is_selected %}<span class="badge text-bg-dark align-self-start">{% translate "таңдалған жауап" %}</span>{% endif %}
                     {% if answer.is_correct %}<span class="badge text-bg-success align-self-start">{% translate "дұрыс" %}</span>{% endif %}
                 </div>
@@ -42,7 +42,7 @@
                         <input class="form-check-input flex-shrink-0 mt-1" type="radio" name="answer" value="{{ answer.id }}"
                                onchange="this.form.submit()">
                         <span class="fw-semibold">{{ answer.letter }})</span>
-                        <pre class="answer-text flex-grow-1">{{ answer.text }}</pre>
+                        {% include "quiz/_answer_content.html" with letter=answer.letter %}
                     </label>
                 {% endfor %}
             </div>
