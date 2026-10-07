@@ -33,6 +33,9 @@ from .constants import (
     TEST_DURATION_MINUTES,
 )
 from .forms import AnswerInlineFormSet
+from .management.commands.loadtest_data import DEFAULT_PASSWORD as LOADTEST_PASSWORD
+from .management.commands.loadtest_data import SESSION_TITLE as LOADTEST_SESSION_TITLE
+from .management.commands.loadtest_data import usernames as loadtest_usernames
 from .models import (
     LEVEL_FULL_DESCRIPTIONS,
     LEVEL_SHORT_DESCRIPTIONS,
@@ -54,6 +57,7 @@ from .services import (
     dashboard_sessions,
     finish_attempt,
     finish_expired_attempts,
+    is_session_open,
     remaining_seconds,
     save_answer,
     split_duration,
@@ -2233,3 +2237,96 @@ class PracticeTests(VariantTestCase):
     def test_links_from_navigation_and_dashboard(self):
         response = self.client.get(reverse("quiz:dashboard"))
         self.assertContains(response, reverse("quiz:practice_start"), count=2)
+
+
+# ---------- Жүктеме тестінің деректері (loadtest_data) ----------
+
+
+class LoadtestDataTests(VariantTestCase):
+    def run_loadtest_data(self, *args):
+        out = StringIO()
+        call_command("loadtest_data", *args, stdout=out)
+        return out.getvalue()
+
+    def loadtest_session(self):
+        return ExamSession.objects.get(title=LOADTEST_SESSION_TITLE)
+
+    def test_creates_accounts_and_open_session(self):
+        output = self.run_loadtest_data("--count", "5")
+        users = User.objects.filter(username__startswith="student").order_by("username")
+        self.assertEqual(
+            list(users.values_list("username", flat=True)),
+            ["student001", "student002", "student003", "student004", "student005"],
+        )
+        group = StudyGroup.objects.get(name="LOADTEST")
+        for user in users:
+            self.assertTrue(user.check_password(LOADTEST_PASSWORD))
+            self.assertFalse(user.is_staff)
+            self.assertEqual(user.profile.group, group)
+
+        session = self.loadtest_session()
+        self.assertTrue(is_session_open(session))
+        self.assertEqual(list(session.groups.all()), [group])
+        self.assertIn(f"LOADTEST_SESSION_ID={session.pk}", output)
+
+        # Нақты студент бұл сессияны көрмейді
+        student = User.objects.create_user(username="real", password="pass12345")
+        self.assertNotIn(session, visible_sessions(student))
+
+    def test_account_can_log_in_and_start_test(self):
+        self.run_loadtest_data("--count", "1")
+        session = self.loadtest_session()
+        response = self.client.post(
+            reverse("accounts:login"),
+            {"username": "student001", "password": LOADTEST_PASSWORD},
+            follow=True,
+        )
+        self.assertEqual(response.request["PATH_INFO"], reverse("quiz:dashboard"))
+        response = self.client.post(
+            reverse("quiz:session_start", args=[session.pk]), {"language": "kk"}
+        )
+        attempt = Attempt.objects.get(user__username="student001")
+        self.assertRedirects(response, reverse("quiz:attempt_question", args=[attempt.pk, 1]))
+
+    def test_rerun_resets_attempts_without_duplicates(self):
+        self.run_loadtest_data("--count", "3")
+        session = self.loadtest_session()
+        create_attempt(User.objects.get(username="student001"), session, "kk")
+        ExamSession.objects.filter(pk=session.pk).update(
+            closes_at=timezone.now() - timedelta(minutes=1)
+        )
+
+        output = self.run_loadtest_data("--count", "3")
+        self.assertEqual(User.objects.filter(username__startswith="student").count(), 3)
+        self.assertFalse(Attempt.objects.exists())
+        self.assertIn("ескі әрекеттер: 1", output)
+        session = self.loadtest_session()
+        self.assertTrue(is_session_open(session))
+        self.assertEqual(ExamSession.objects.filter(title=LOADTEST_SESSION_TITLE).count(), 1)
+
+    def test_foreign_account_is_not_changed(self):
+        real = User.objects.create_user(username="student002", password="real-password-1")
+        with self.assertRaises(CommandError):
+            self.run_loadtest_data("--count", "3")
+        real.refresh_from_db()
+        self.assertTrue(real.check_password("real-password-1"))
+        self.assertFalse(User.objects.filter(username="student001").exists())
+
+    def test_delete_removes_only_loadtest_data(self):
+        real = User.objects.create_user(username="real", password="pass12345")
+        self.run_loadtest_data("--count", "2")
+        create_attempt(User.objects.get(username="student001"), self.loadtest_session(), "kk")
+
+        output = self.run_loadtest_data("--delete")
+        self.assertIn("2 аккаунт, 1 әрекет", output)
+        self.assertFalse(User.objects.filter(username__startswith="student").exists())
+        self.assertFalse(StudyGroup.objects.filter(name="LOADTEST").exists())
+        self.assertFalse(ExamSession.objects.filter(title=LOADTEST_SESSION_TITLE).exists())
+        self.assertTrue(User.objects.filter(pk=real.pk).exists())
+
+    def test_usernames_for_1000_accounts(self):
+        names = loadtest_usernames(1000)
+        self.assertEqual(names[0], "student001")
+        self.assertEqual(names[99], "student100")
+        self.assertEqual(names[-1], "student1000")
+        self.assertEqual(len(set(names)), 1000)

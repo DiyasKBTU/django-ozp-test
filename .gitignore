@@ -224,3 +224,7 @@ __marimo__/
 # Жоба: жүктелген суреттер және collectstatic нәтижесі
 media/
 staticfiles/
+
+# Жүктеме тесті: Locust ортасы мен есептері
+.venv-loadtest/
+loadtest-report*.html

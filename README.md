@@ -70,6 +70,45 @@ Linux/macOS-та `.venv\Scripts\python` орнына `.venv/bin/python` жазы
 .venv\Scripts\python manage.py test
 ```
 
+## Жүктеме тесті (Locust)
+
+[loadtest/locustfile.py](loadtest/locustfile.py) нақты студенттің жолын қайталайды: тест аккаунтымен кіреді → ашық сессияда тестті бастайды → 50 сұраққа 5–20 секунд аралықпен жауап береді → тестті аяқтайды. Бір виртуалды студентке — бір аккаунт (бір сессияда бір әрекет болғандықтан), сондықтан 1000 студентке 1000 аккаунт керек.
+
+**Маңызды:** жүктеме тестін серверде (PostgreSQL + Gunicorn) жүргізіңіз. Жергілікті `runserver` + SQLite бір мезгілде жазуды көтермейді: бірнеше студент қатар жауап сақтаса, `database is locked` (HTTP 500) қатесі шығады. Жергілікті ортада тек скрипттің жұмысын 2–3 студентпен (`-u 3 -r 1`) тексеруге болады.
+
+**1. Деректер** (сервердегі жобада; банкте тестке жететін сұрақ болуы керек):
+
+```bash
+sudo -u ozp .venv/bin/python manage.py loadtest_data --count 1000
+# → Locust үшін: LOADTEST_SESSION_ID=7 LOADTEST_ACCOUNTS=1000
+```
+
+Команда `student001`–`student1000` аккаунттарын (`--count` әдепкісі — 100: `student001`–`student100`) және тек солардың «LOADTEST» тобына ашық сессияны жасайды; нақты студенттер бұл сессияны көрмейді. Аккаунттардың құпия сөзі — `loadtest-pass-2026` (`--password` арқылы өзгертуге болады). Қайта іске қосқанда бұрынғы әрекеттер өшіріледі де, сессия қайта ашылады.
+
+**2. Locust** (өз компьютеріңізде, бөлек виртуалды ортада):
+
+```powershell
+python -m venv .venv-loadtest
+.venv-loadtest\Scripts\python -m pip install -r loadtest/requirements.txt
+
+$env:LOADTEST_SESSION_ID = "7"
+$env:LOADTEST_ACCOUNTS = "1000"
+# Windows gevent DLL-ін бұғаттаса (DLL load failed): $env:PURE_PYTHON = "1"
+.venv-loadtest\Scripts\locust -f loadtest/locustfile.py --host https://test.example.kz --headless -u 1000 -r 5 --run-time 40m --html loadtest-report.html
+```
+
+- `-u 1000` — виртуалды студенттер саны (`LOADTEST_ACCOUNTS`-тан аспауы керек), `-r 5` — секундына қанша студент қосылады. Кіру кезінде құпия сөз тексеру процессорды көп жұмсайды, сондықтан студенттерді біртіндеп қосқан дұрыс.
+- Бір студенттің тесті шамамен 11 минут (50 × орташа 12,5 с). Барлығы аяқтағанда Locust өзі тоқтайды; `--run-time` — тек сақтық үшін.
+- `--headless` жазылмаса, нәтижені браузерде көруге болады: http://localhost:8089 .
+- Басқа баптаулар: `LOADTEST_PASSWORD`, `LOADTEST_LANGUAGE` (`kk` / `ru`), `LOADTEST_MIN_WAIT`, `LOADTEST_MAX_WAIT` (секунд).
+- Locust-ты бір процесте іске қосыңыз (`--processes` жоқ): аккаунттар ретімен беріледі.
+
+**3. Тазалау** (міндетті — аккаунттардың құпия сөзі белгілі):
+
+```bash
+sudo -u ozp .venv/bin/python manage.py loadtest_data --delete
+```
+
 ## Серверге орнату
 
 VPS-ке (Ubuntu 24.04: Nginx + Gunicorn + PostgreSQL + HTTPS) қадамдап орнату, бэкап және жаңарту тәртібі — [deploy/DEPLOY.md](deploy/DEPLOY.md). Баптау файлдары: `deploy/nginx.conf`, `deploy/gunicorn.service`, `deploy/backup.sh`.

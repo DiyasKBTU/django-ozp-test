@@ -1,0 +1,4 @@
+# Жүктеме тестіне ғана керек (сайттың өзіне емес). Бөлек ортаға орнатқан дұрыс:
+#   python -m venv .venv-loadtest
+#   .venv-loadtest\Scripts\python -m pip install -r loadtest/requirements.txt
+locust>=2.32
