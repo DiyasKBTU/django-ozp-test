@@ -21,6 +21,7 @@ from apps.accounts.models import StudyGroup
 
 from .constants import (
     ANSWERS_PER_QUESTION,
+    PRACTICE_QUESTIONS,
     CONTEXTS_PER_TEST,
     LEVEL_QUOTA,
     MIN_CONTEXTS,
@@ -2060,3 +2061,175 @@ class FullTranslationTests(VariantTestCase):
             for phrase in english:
                 with self.subTest(page=name, phrase=phrase):
                     self.assertNotIn(phrase, text)
+
+    def test_practice_pages(self):
+        self.client.force_login(self.student)
+        topic = Topic.objects.get(number=8)
+        self.assert_russian(self.client.get(reverse("quiz:practice_start")), "practice start")
+        self.client.post(reverse("quiz:practice_start"), {"topic": topic.pk, "language": "ru"})
+        url = reverse("quiz:practice_question", args=[1])
+        self.assert_russian(self.client.get(url), "practice question")
+        answer_id = self.client.session["practice"]["items"][0]["answer_order"][0]
+        self.client.post(url, {"answer": answer_id})
+        self.assert_russian(self.client.get(url), "practice feedback")
+        self.assert_russian(self.client.get(reverse("quiz:practice_result")), "practice result")
+
+
+# ---------- Екінші кезең: тақырыптық жаттығу ----------
+
+
+class PracticeTests(VariantTestCase):
+    def setUp(self):
+        self.student = User.objects.create_user(username="student", password="pass12345")
+        self.client.force_login(self.student)
+        # 08 тақырып: 4 тақырыпша — сұрақ көп
+        self.topic = Topic.objects.get(number=8)
+
+    def start(self, topic=None, language="kk"):
+        return self.client.post(
+            reverse("quiz:practice_start"),
+            {"topic": (topic or self.topic).pk, "language": language},
+        )
+
+    def practice(self):
+        return self.client.session["practice"]
+
+    def question_url(self, number):
+        return reverse("quiz:practice_question", args=[number])
+
+    def item_question(self, number):
+        return Question.objects.get(pk=self.practice()["items"][number - 1]["question"])
+
+    def test_start_page(self):
+        response = self.client.get(reverse("quiz:practice_start"))
+        self.assertContains(response, f"{PRACTICE_QUESTIONS} сұрақ")
+        self.assertEqual(len(response.context["form"].fields["topic"].queryset), 11)
+
+    def test_start_chooses_10_questions_from_topic_and_language(self):
+        response = self.start(language="ru")
+        self.assertRedirects(response, self.question_url(1))
+        items = self.practice()["items"]
+        self.assertEqual(len(items), PRACTICE_QUESTIONS)
+        question_ids = [item["question"] for item in items]
+        self.assertEqual(len(set(question_ids)), PRACTICE_QUESTIONS)
+        questions = Question.objects.filter(pk__in=question_ids)
+        self.assertFalse(questions.exclude(subtopic__topic=self.topic).exists())
+        self.assertFalse(questions.exclude(language="ru").exists())
+        self.assertFalse(questions.filter(is_active=False).exists())
+        for item in items:
+            question = Question.objects.get(pk=item["question"])
+            self.assertCountEqual(
+                item["answer_order"], question.answers.values_list("id", flat=True)
+            )
+        # Жаттығу Attempt жасамайды
+        self.assertFalse(Attempt.objects.exists())
+
+    def test_small_topic_uses_all_available_questions(self):
+        topic_questions = Question.objects.filter(subtopic__topic=self.topic, language="kk")
+        keep = list(topic_questions.values_list("id", flat=True)[:3])
+        topic_questions.exclude(pk__in=keep).update(is_active=False)
+        self.start()
+        self.assertCountEqual([item["question"] for item in self.practice()["items"]], keep)
+
+    def test_topic_without_questions(self):
+        Question.objects.filter(subtopic__topic=self.topic, language="kk").update(is_active=False)
+        response = self.start()
+        self.assertRedirects(
+            response, reverse("quiz:practice_start"), fetch_redirect_response=False
+        )
+        self.assertNotIn("practice", self.client.session)
+        self.assertContains(self.client.get(response["Location"]), "сұрақ әлі жоқ")
+
+    def test_correct_answer_hidden_until_answered(self):
+        self.start()
+        response = self.client.get(self.question_url(1))
+        self.assertContains(response, 'name="answer"', count=4)
+        self.assertNotContains(response, "list-group-item-success")
+        for answer in response.context["answers"]:
+            self.assertIsNone(answer["is_correct"])
+
+    def test_correct_answer_feedback(self):
+        self.start()
+        correct = self.item_question(1).answers.get(is_correct=True)
+        response = self.client.post(self.question_url(1), {"answer": correct.pk})
+        self.assertRedirects(response, self.question_url(1))
+        response = self.client.get(self.question_url(1))
+        self.assertContains(response, "Дұрыс!")
+        self.assertContains(response, "list-group-item-success", count=1)
+        self.assertNotContains(response, "list-group-item-danger")
+        self.assertNotContains(response, 'name="answer"')
+        self.assertEqual(response.context["navigation"][0]["state"], "correct")
+
+    def test_wrong_answer_feedback_and_cannot_change(self):
+        self.start()
+        question = self.item_question(2)
+        wrong = question.answers.filter(is_correct=False).first()
+        correct = question.answers.get(is_correct=True)
+        self.client.post(self.question_url(2), {"answer": wrong.pk})
+        # Жауапты өзгертуге болмайды
+        self.client.post(self.question_url(2), {"answer": correct.pk})
+        self.assertEqual(self.practice()["items"][1]["selected"], wrong.pk)
+
+        response = self.client.get(self.question_url(2))
+        self.assertContains(response, "Қате.")
+        self.assertContains(response, "list-group-item-success", count=1)
+        self.assertContains(response, "list-group-item-danger", count=1)
+        self.assertEqual(response.context["navigation"][1]["state"], "wrong")
+
+    def test_answer_from_other_question_is_rejected(self):
+        self.start()
+        other = self.item_question(2).answers.first()
+        self.client.post(self.question_url(1), {"answer": other.pk})
+        self.assertIsNone(self.practice()["items"][0]["selected"])
+
+    def test_result(self):
+        self.start()
+        for number in [1, 2]:
+            answer = self.item_question(number).answers.get(is_correct=True)
+            self.client.post(self.question_url(number), {"answer": answer.pk})
+        wrong = self.item_question(3).answers.filter(is_correct=False).first()
+        self.client.post(self.question_url(3), {"answer": wrong.pk})
+
+        response = self.client.get(reverse("quiz:practice_result"))
+        summary = response.context["summary"]
+        self.assertEqual(summary["correct"], 2)
+        self.assertEqual(summary["total"], PRACTICE_QUESTIONS)
+        self.assertEqual(summary["unanswered"], PRACTICE_QUESTIONS - 3)
+        self.assertEqual(summary["topic"], self.topic)
+        self.assertContains(response, f"2 / {PRACTICE_QUESTIONS}")
+        self.assertContains(response, "Дұрыс жауаптар: 20%.")
+
+    def test_new_practice_replaces_old(self):
+        self.start()
+        first_answer = self.item_question(1).answers.first()
+        self.client.post(self.question_url(1), {"answer": first_answer.pk})
+        self.start(topic=Topic.objects.get(number=1))
+        self.assertTrue(all(item["selected"] is None for item in self.practice()["items"]))
+
+    def test_without_practice_or_wrong_number(self):
+        for url in [self.question_url(1), reverse("quiz:practice_result")]:
+            with self.subTest(url=url):
+                self.assertRedirects(self.client.get(url), reverse("quiz:practice_start"))
+        self.start()
+        self.assertEqual(self.client.get(self.question_url(0)).status_code, 404)
+        last = PRACTICE_QUESTIONS + 1
+        self.assertEqual(self.client.get(self.question_url(last)).status_code, 404)
+
+    def test_deleted_question_restarts_practice(self):
+        self.start()
+        session = self.client.session
+        session["practice"]["items"][0]["question"] = 999999
+        session.save()
+        response = self.client.get(self.question_url(1))
+        self.assertRedirects(response, reverse("quiz:practice_start"))
+        self.assertNotIn("practice", self.client.session)
+
+    def test_guest_is_redirected_to_login(self):
+        self.client.logout()
+        response = self.client.get(reverse("quiz:practice_start"))
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(reverse("accounts:login"), response["Location"])
+
+    def test_links_from_navigation_and_dashboard(self):
+        response = self.client.get(reverse("quiz:dashboard"))
+        self.assertContains(response, reverse("quiz:practice_start"), count=2)

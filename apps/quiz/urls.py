@@ -20,6 +20,10 @@ urlpatterns = [
         views.attempt_result_page,
         name="attempt_result",
     ),
+    # Тақырыптық жаттығу
+    path("practice/", views.practice_start, name="practice_start"),
+    path("practice/q/<int:number>/", views.practice_question, name="practice_question"),
+    path("practice/result/", views.practice_result, name="practice_result"),
     # ---------- Оқытушы беттері ----------
     path("teacher/questions/", teacher_views.question_list, name="teacher_questions"),
     path(

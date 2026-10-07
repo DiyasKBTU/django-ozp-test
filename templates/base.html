@@ -61,6 +61,9 @@
                     <li class="nav-item">
                         <a class="nav-link{% if url_name == 'dashboard' %} active{% endif %}" href="{% url 'quiz:dashboard' %}">{% translate "Кабинет" %}</a>
                     </li>
+                    <li class="nav-item">
+                        <a class="nav-link{% if 'practice' in url_name %} active{% endif %}" href="{% url 'quiz:practice_start' %}">{% translate "Жаттығу" %}</a>
+                    </li>
                 {% endif %}
             </ul>
 

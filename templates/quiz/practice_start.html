@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% load i18n %}
+
+{% block title %}{% translate "Тақырыптық жаттығу" %}{% endblock %}
+
+{% block content %}
+<div class="bg-white rounded shadow-sm p-4" style="max-width: 720px">
+    <h1 class="h4 mb-2">{% translate "Тақырыптық жаттығу" %}</h1>
+    <p class="text-muted">
+        {% blocktranslate %}Таңдалған тақырыптан {{ practice_questions }} сұрақ, таймерсіз. Әр жауаптан кейін дұрыс жауап бірден көрсетіледі. Нәтиже сақталмайды.{% endblocktranslate %}
+    </p>
+
+    <form method="post">
+        {% csrf_token %}
+        <div class="mb-3">
+            <label class="form-label" for="{{ form.topic.id_for_label }}">{{ form.topic.label }}</label>
+            {{ form.topic }}
+            {% for error in form.topic.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+        </div>
+        <fieldset class="mb-3">
+            <legend class="form-label fs-6">{{ form.language.label }}</legend>
+            {% for radio in form.language %}
+                <div class="form-check form-check-inline">
+                    {{ radio.tag }}
+                    <label class="form-check-label" for="{{ radio.id_for_label }}">{{ radio.choice_label }}</label>
+                </div>
+            {% endfor %}
+            {% for error in form.language.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+        </fieldset>
+        <div class="d-flex flex-wrap gap-2">
+            <button type="submit" class="btn btn-success">{% translate "Жаттығуды бастау" %}</button>
+            {% if has_practice %}
+                <a class="btn btn-outline-primary" href="{% url 'quiz:practice_result' %}">{% translate "Алдыңғы жаттығуға оралу" %}</a>
+            {% endif %}
+        </div>
+    </form>
+</div>
+{% endblock %}

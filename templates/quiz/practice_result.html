@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% load i18n %}
+
+{% block title %}{% translate "Жаттығу қорытындысы" %}{% endblock %}
+
+{% block content %}
+<div class="bg-white rounded shadow-sm p-4" style="max-width: 720px">
+    <h1 class="h4 mb-1">{% translate "Жаттығу қорытындысы" %}</h1>
+    <p class="text-muted">{{ summary.topic }} · {{ summary.language }}</p>
+
+    <div class="display-6 fw-semibold mb-1">{{ summary.correct }} / {{ summary.total }}</div>
+    <p>
+        {% blocktranslate with percent=summary.percent %}Дұрыс жауаптар: {{ percent }}%.{% endblocktranslate %}
+        {% if summary.unanswered %}
+            {% blocktranslate with count=summary.unanswered %}Жауап берілмеген сұрақтар: {{ count }}.{% endblocktranslate %}
+        {% endif %}
+    </p>
+
+    <p class="small text-muted mb-2">{% translate "Сұрақты қайта қарау үшін нөмірін басыңыз." %}</p>
+    {% include "quiz/_practice_navigation.html" with navigation=summary.navigation number=0 %}
+
+    <div class="d-flex flex-wrap gap-2">
+        <a class="btn btn-success" href="{% url 'quiz:practice_start' %}">{% translate "Жаңа жаттығу" %}</a>
+        <a class="btn btn-outline-secondary" href="{% url 'quiz:dashboard' %}">{% translate "Кабинетке оралу" %}</a>
+    </div>
+</div>
+{% endblock %}

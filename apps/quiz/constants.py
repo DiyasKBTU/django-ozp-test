@@ -26,3 +26,6 @@ TEST_DURATION_MINUTES = 125
 # Банктің ең аз көлемі (әр тіл үшін бөлек)
 MIN_QUESTIONS_PER_SUBTOPIC = 6
 MIN_CONTEXTS = 4
+
+# Тақырыптық жаттығу (екінші кезең): бір тақырыптан сұрақ саны, таймерсіз
+PRACTICE_QUESTIONS = 10

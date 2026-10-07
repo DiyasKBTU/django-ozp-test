@@ -1,7 +1,7 @@
 """
 Бизнес-логика (TZ.md, 3–4-бөлімдер): сұрақты сақтау және көшіру, банк толуы,
 студентке көрінетін сессиялар, тест нұсқасын құру, тест тапсыру (жауап сақтау,
-аяқтау, балл есептеу) және нәтиже талдауы.
+аяқтау, балл есептеу), нәтиже талдауы және тақырыптық жаттығу.
 """
 
 import csv
@@ -22,6 +22,7 @@ from .constants import (
     LEVEL_QUOTA,
     MIN_CONTEXTS,
     MIN_QUESTIONS_PER_SUBTOPIC,
+    PRACTICE_QUESTIONS,
     QUESTIONS_PER_CONTEXT,
     QUESTIONS_TOTAL,
     SINGLE_QUESTIONS_PER_SUBTOPIC,
@@ -670,14 +671,14 @@ def unanswered_numbers(attempt):
     )
 
 
-def ordered_answers(item, answers_by_id):
+def ordered_answers(answer_order, answers_by_id):
     """
     Сұрақтың жауап нұсқалары студентке көрсетілген ретпен:
-    [{"letter": "A", "answer": Answer}, ...].
+    [{"letter": "A", "answer": Answer}, ...]. answer_order — нұсқалар id тізімі.
     """
     return [
         {"letter": ANSWER_LETTERS[index], "answer": answers_by_id[answer_id]}
-        for index, answer_id in enumerate(item.answer_order)
+        for index, answer_id in enumerate(answer_order)
     ]
 
 
@@ -691,7 +692,7 @@ def question_page_data(attempt, item, now=None):
     answers_by_id = Answer.objects.in_bulk(item.answer_order)
     answers = [
         {"letter": row["letter"], "id": row["answer"].pk, "text": row["answer"].text}
-        for row in ordered_answers(item, answers_by_id)
+        for row in ordered_answers(item.answer_order, answers_by_id)
     ]
     total = len(navigation)
     return {
@@ -871,7 +872,7 @@ def attempt_result(attempt, with_answers):
                 {
                     "number": item.order,
                     "question": item.question,
-                    "answers": ordered_answers(item, answers_by_id),
+                    "answers": ordered_answers(item.answer_order, answers_by_id),
                     "selected_id": item.selected_id,
                     "is_correct": bool(item.selected and item.selected.is_correct),
                 }
@@ -886,4 +887,138 @@ def attempt_result(attempt, with_answers):
         "levels": levels,
         "topics": topics,
         "questions": questions,
+    }
+
+
+# ---------- Тақырыптық жаттығу (TZ.md, 3-бөлім, 10-тармақ; екінші кезең) ----------
+# Жаттығу дерекқорға жазылмайды: оның күйі студенттің Django сессиясында
+# сақталатын қарапайым сөздік — {"topic": id, "language": "kk",
+# "items": [{"question": id, "answer_order": [...], "selected": id немесе None}]}
+
+
+def start_practice(topic, language, rng=None):
+    """
+    Жаттығуды бастау: тақырыптың берілген тілдегі белсенді сұрақтарынан
+    кездейсоқ 10-ын (аз болса — барын) таңдап, жауап нұсқаларын араластырады.
+    Сұрақ мүлде болмаса — AttemptError.
+    """
+    if rng is None:
+        rng = random.Random()
+    question_ids = list(
+        Question.objects.filter(
+            subtopic__topic=topic, language=language, is_active=True
+        ).values_list("id", flat=True)
+    )
+    if not question_ids:
+        raise AttemptError(_("Бұл тақырып бойынша таңдалған тілде сұрақ әлі жоқ."))
+    question_ids = rng.sample(question_ids, min(PRACTICE_QUESTIONS, len(question_ids)))
+
+    answers = {question_id: [] for question_id in question_ids}
+    rows = Answer.objects.filter(question_id__in=question_ids).values_list("question_id", "id")
+    for question_id, answer_id in rows:
+        answers[question_id].append(answer_id)
+
+    items = []
+    for question_id in question_ids:
+        answer_order = sorted(answers[question_id])
+        rng.shuffle(answer_order)
+        items.append({"question": question_id, "answer_order": answer_order, "selected": None})
+    return {"topic": topic.pk, "language": language, "items": items}
+
+
+def practice_answer(practice, number, answer_id):
+    """
+    Жаттығудағы n-сұраққа жауап жазады. Жауап бір рет беріледі (дұрысы бірден
+    көрсетілетіндіктен, кейін өзгертуге болмайды). Қайтарады: жазылды ма.
+    """
+    item = practice["items"][number - 1]
+    if item["selected"] is not None:
+        return False
+    item["selected"] = answer_id
+    return True
+
+
+def practice_question_data(practice, number):
+    """
+    Жаттығудың n-сұрақ беті: сұрақ, нұсқалар (жауап берілген соң — дұрысы
+    белгіленеді), навигация. Сұрақ банктен өшіріліп кетсе — None.
+    """
+    item = practice["items"][number - 1]
+    question = (
+        Question.objects.select_related("context", "subtopic").filter(pk=item["question"]).first()
+    )
+    if question is None:
+        return None
+    answers_by_id = Answer.objects.in_bulk(item["answer_order"])
+    answered = item["selected"] is not None
+
+    answers = []
+    for row in ordered_answers(item["answer_order"], answers_by_id):
+        answer = row["answer"]
+        answers.append(
+            {
+                "letter": row["letter"],
+                "id": answer.pk,
+                "text": answer.text,
+                # Дұрыс жауап тек студент жауап бергеннен кейін шаблонға жетеді
+                "is_correct": answer.is_correct if answered else None,
+                "is_selected": answer.pk == item["selected"],
+            }
+        )
+
+    total = len(practice["items"])
+    return {
+        "question": question,
+        "number": number,
+        "total": total,
+        "answers": answers,
+        "answered": answered,
+        "is_correct": answered and any(a["is_selected"] and a["is_correct"] for a in answers),
+        "navigation": practice_navigation(practice),
+        "previous_number": number - 1 if number > 1 else None,
+        "next_number": number + 1 if number < total else None,
+    }
+
+
+def practice_correct_ids(practice):
+    """Жаттығуда дұрыс жауап берілген сұрақтардың нөмірлері (1-ден бастап)."""
+    selected_ids = [item["selected"] for item in practice["items"] if item["selected"]]
+    correct = set(
+        Answer.objects.filter(pk__in=selected_ids, is_correct=True).values_list("id", flat=True)
+    )
+    return {
+        number
+        for number, item in enumerate(practice["items"], start=1)
+        if item["selected"] in correct
+    }
+
+
+def practice_navigation(practice):
+    """Навигация: әр сұрақ — жауап берілмеген / дұрыс / қате."""
+    correct_numbers = practice_correct_ids(practice)
+    navigation = []
+    for number, item in enumerate(practice["items"], start=1):
+        if item["selected"] is None:
+            state = "empty"
+        elif number in correct_numbers:
+            state = "correct"
+        else:
+            state = "wrong"
+        navigation.append({"number": number, "state": state})
+    return navigation
+
+
+def practice_summary(practice):
+    """Жаттығу қорытындысы: тақырып, дұрыс жауаптар саны, жауап берілмегені."""
+    total = len(practice["items"])
+    correct = len(practice_correct_ids(practice))
+    unanswered = sum(1 for item in practice["items"] if item["selected"] is None)
+    return {
+        "topic": Topic.objects.filter(pk=practice["topic"]).first(),
+        "language": Language(practice["language"]).label,
+        "correct": correct,
+        "total": total,
+        "unanswered": unanswered,
+        "percent": percent(correct, total),
+        "navigation": practice_navigation(practice),
     }

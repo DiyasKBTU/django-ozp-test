@@ -1,12 +1,13 @@
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils.translation import get_language
 from django.utils.translation import gettext as _
 from django.views.decorators.cache import never_cache
 
-from .constants import QUESTIONS_TOTAL, TEST_DURATION_MINUTES
-from .forms import AttemptAnswerForm, StartAttemptForm
+from .constants import PRACTICE_QUESTIONS, QUESTIONS_TOTAL, TEST_DURATION_MINUTES
+from .forms import AttemptAnswerForm, PracticeStartForm, StartAttemptForm
 from .models import Attempt, Language
 from .services import (
     AttemptError,
@@ -19,9 +20,13 @@ from .services import (
     finish_if_expired,
     first_unanswered_number,
     is_session_open,
+    practice_answer,
+    practice_question_data,
+    practice_summary,
     question_page_data,
     remaining_seconds,
     save_answer,
+    start_practice,
     unanswered_numbers,
     visible_sessions,
 )
@@ -48,6 +53,11 @@ def dashboard(request):
 
 
 # ---------- Тест тапсыру ----------
+
+
+def interface_language():
+    """Тест/жаттығу тілінің әдепкі мәні — интерфейс тілі (kk немесе ru)."""
+    return Language.RU if get_language() == "ru" else Language.KK
 
 
 def get_own_attempt(request, attempt_id):
@@ -79,11 +89,7 @@ def session_start(request, session_id):
     if attempt:
         return redirect_to_attempt(finish_if_expired(attempt))
 
-    # Әдепкі тест тілі — интерфейс тілі
-    form = StartAttemptForm(
-        request.POST or None,
-        initial={"language": Language.RU if get_language() == "ru" else Language.KK},
-    )
+    form = StartAttemptForm(request.POST or None, initial={"language": interface_language()})
     if request.method == "POST" and form.is_valid():
         try:
             attempt = create_attempt(request.user, session, form.cleaned_data["language"])
@@ -114,7 +120,7 @@ def attempt_question(request, attempt_id, number):
     )
 
     if request.method == "POST":
-        form = AttemptAnswerForm(item, request.POST)
+        form = AttemptAnswerForm(item.answer_order, request.POST)
         if not form.is_valid():
             messages.error(request, _("Жауап нұсқасын таңдаңыз."))
         elif not save_answer(item, form.cleaned_data["answer"]):
@@ -174,3 +180,69 @@ def attempt_result_page(request, attempt_id):
         "show_answers": show_answers,
     }
     return render(request, "quiz/result.html", context)
+
+
+# ---------- Тақырыптық жаттығу (таймерсіз, дұрыс жауап бірден көрсетіледі) ----------
+
+# Жаттығу күйі студенттің Django сессиясында осы кілтпен сақталады
+PRACTICE_SESSION_KEY = "practice"
+
+
+@login_required
+def practice_start(request):
+    """GET — тақырып пен тілді таңдау, POST — жаңа жаттығу (алдыңғысының орнына)."""
+    form = PracticeStartForm(request.POST or None, initial={"language": interface_language()})
+    if request.method == "POST" and form.is_valid():
+        try:
+            practice = start_practice(
+                form.cleaned_data["topic"], form.cleaned_data["language"]
+            )
+        except AttemptError as error:
+            messages.error(request, str(error))
+            return redirect("quiz:practice_start")
+        request.session[PRACTICE_SESSION_KEY] = practice
+        return redirect("quiz:practice_question", 1)
+
+    context = {
+        "form": form,
+        "has_practice": PRACTICE_SESSION_KEY in request.session,
+        "practice_questions": PRACTICE_QUESTIONS,
+    }
+    return render(request, "quiz/practice_start.html", context)
+
+
+@login_required
+def practice_question(request, number):
+    """Жаттығудың n-сұрағы: POST — жауап (бір рет), содан кейін дұрыс жауап көрсетіледі."""
+    practice = request.session.get(PRACTICE_SESSION_KEY)
+    if not practice:
+        return redirect("quiz:practice_start")
+    if not 1 <= number <= len(practice["items"]):
+        raise Http404
+
+    if request.method == "POST":
+        item = practice["items"][number - 1]
+        form = AttemptAnswerForm(item["answer_order"], request.POST)
+        if form.is_valid():
+            practice_answer(practice, number, form.cleaned_data["answer"])
+            # Сессиядағы ішкі сөздік өзгерді — Django-ға сақтау керектігін айтамыз
+            request.session.modified = True
+        else:
+            messages.error(request, _("Жауап нұсқасын таңдаңыз."))
+        return redirect("quiz:practice_question", number)
+
+    context = practice_question_data(practice, number)
+    if context is None:
+        del request.session[PRACTICE_SESSION_KEY]
+        messages.warning(request, _("Сұрақ банктен өшірілген. Жаттығуды қайта бастаңыз."))
+        return redirect("quiz:practice_start")
+    return render(request, "quiz/practice_question.html", context)
+
+
+@login_required
+def practice_result(request):
+    """Жаттығу қорытындысы: дұрыс жауаптар саны және әр сұраққа сілтеме."""
+    practice = request.session.get(PRACTICE_SESSION_KEY)
+    if not practice:
+        return redirect("quiz:practice_start")
+    return render(request, "quiz/practice_result.html", {"summary": practice_summary(practice)})

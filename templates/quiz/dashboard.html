@@ -4,7 +4,10 @@
 {% block title %}{% translate "Кабинет" %}{% endblock %}
 
 {% block content %}
-<h1 class="h4 mb-4">{% translate "Жеке кабинет" %}</h1>
+<div class="d-flex flex-wrap align-items-center gap-2 mb-4">
+    <h1 class="h4 mb-0 me-auto">{% translate "Жеке кабинет" %}</h1>
+    <a class="btn btn-outline-primary" href="{% url 'quiz:practice_start' %}">{% translate "Тақырыптық жаттығу" %}</a>
+</div>
 
 <div class="row g-4">
     {# Ашық сессиялар: тестті бастауға болады #}

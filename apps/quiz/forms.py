@@ -336,17 +336,31 @@ class StartAttemptForm(forms.Form):
 
 class AttemptAnswerForm(forms.Form):
     """
-    Сұраққа жауап: таңдалған нұсқа тек осы сұрақтың 4 нұсқасының бірі бола алады
-    (бөтен сұрақтың жауабын жіберуге болмайды).
+    Сұраққа жауап (тест пен жаттығуда): таңдалған нұсқа тек осы сұрақтың
+    нұсқаларының бірі бола алады (бөтен сұрақтың жауабын жіберуге болмайды).
+    answer_ids — сұрақтың жауап нұсқаларының id тізімі.
     """
 
     answer = forms.TypedChoiceField(coerce=int)
 
-    def __init__(self, item, *args, **kwargs):
+    def __init__(self, answer_ids, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields["answer"].choices = [
-            (answer_id, answer_id) for answer_id in item.answer_order
-        ]
+        self.fields["answer"].choices = [(answer_id, answer_id) for answer_id in answer_ids]
+
+
+class PracticeStartForm(forms.Form):
+    """Тақырыптық жаттығуды бастау: тақырып және сұрақтар тілі."""
+
+    topic = forms.ModelChoiceField(
+        label=_("Тақырып"), queryset=Topic.objects.all(), empty_label=None
+    )
+    language = forms.ChoiceField(
+        label=_("Сұрақтар тілі"), choices=Language.choices, widget=forms.RadioSelect
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        add_bootstrap_classes(self)
 
 
 # ---------- Оқытушының нәтижелер беті ----------

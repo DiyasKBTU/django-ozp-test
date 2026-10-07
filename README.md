@@ -28,6 +28,8 @@ copy .env.example .env
 
 Оқытушы беттері (`is_staff` қолданушыға): сұрақтар — http://127.0.0.1:8000/teacher/questions/ , контексттер — `/teacher/contexts/`, банк толуы — `/teacher/bank/`, нәтижелер және CSV — `/teacher/results/`.
 
+Студент беттері: кабинет — `/dashboard/`, тақырыптық жаттығу (бір тақырыптан 10 сұрақ, таймерсіз, дұрыс жауап бірден көрсетіледі) — `/practice/`.
+
 Linux/macOS-та `.venv\Scripts\python` орнына `.venv/bin/python` жазыңыз.
 
 ## Демо сұрақтар

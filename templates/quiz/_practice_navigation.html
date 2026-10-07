@@ -1,0 +1,10 @@
+{% load i18n %}
+{# Жаттығу навигациясы: жасыл — дұрыс, қызыл — қате, сұр — жауап берілмеген #}
+<nav class="d-flex flex-wrap gap-1 mb-4" aria-label="{% translate 'Сұрақтар' %}">
+    {% for cell in navigation %}
+        <a href="{% url 'quiz:practice_question' cell.number %}"
+           class="btn btn-sm {% if cell.state == 'correct' %}btn-success{% elif cell.state == 'wrong' %}btn-danger{% else %}btn-outline-secondary{% endif %}{% if cell.number == number %} border-3 border-warning fw-bold{% endif %}"
+           style="min-width: 2.6rem"
+           {% if cell.number == number %}aria-current="page"{% endif %}>{{ cell.number }}</a>
+    {% endfor %}
+</nav>
