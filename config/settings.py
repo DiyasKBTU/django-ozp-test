@@ -34,6 +34,24 @@ ALLOWED_HOSTS = [
     if host.strip()
 ]
 
+# Серверде (DEBUG=False): сайт тек HTTPS арқылы. Nginx сұранысты Gunicorn-ға
+# жібергенде X-Forwarded-Proto тақырыбымен HTTPS екенін хабарлайды.
+if not DEBUG:
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+    SECURE_SSL_REDIRECT = True
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    # HSTS: браузер сайтты тек HTTPS арқылы ашады. HTTPS дұрыс жұмыс істейтініне
+    # көз жеткізгеннен кейін ғана .env-те қосыңыз (мысалы, 31536000 — бір жыл)
+    SECURE_HSTS_SECONDS = int(os.environ.get("SECURE_HSTS_SECONDS", "0"))
+
+# Формалар жіберілетін домендер, мысалы https://test.example.kz (міндетті емес)
+CSRF_TRUSTED_ORIGINS = [
+    origin.strip()
+    for origin in os.environ.get("CSRF_TRUSTED_ORIGINS", "").split(",")
+    if origin.strip()
+]
+
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -126,3 +144,18 @@ MEDIA_URL = "media/"
 MEDIA_ROOT = BASE_DIR / "media"
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+
+# Журнал: ескертулер мен қателер консольге шығады (серверде — journalctl -u ozp-test).
+# Мысалы, банкте сұрақ жетпегендегі ескерту (apps/quiz/services.py) осында көрінеді.
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "simple": {"format": "{asctime} {levelname} {name}: {message}", "style": "{"},
+    },
+    "handlers": {
+        "console": {"class": "logging.StreamHandler", "formatter": "simple"},
+    },
+    "root": {"handlers": ["console"], "level": "WARNING"},
+}

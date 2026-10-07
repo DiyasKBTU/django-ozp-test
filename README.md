@@ -67,3 +67,7 @@ Linux/macOS-та `.venv\Scripts\python` орнына `.venv/bin/python` жазы
 ```powershell
 .venv\Scripts\python manage.py test
 ```
+
+## Серверге орнату
+
+VPS-ке (Ubuntu 24.04: Nginx + Gunicorn + PostgreSQL + HTTPS) қадамдап орнату, бэкап және жаңарту тәртібі — [deploy/DEPLOY.md](deploy/DEPLOY.md). Баптау файлдары: `deploy/nginx.conf`, `deploy/gunicorn.service`, `deploy/backup.sh`.
