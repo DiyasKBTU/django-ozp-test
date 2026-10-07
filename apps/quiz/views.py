@@ -1,9 +1,8 @@
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import get_object_or_404, render
-from django.utils import timezone
 
 from .constants import QUESTIONS_TOTAL, TEST_DURATION_MINUTES
-from .services import dashboard_sessions, visible_sessions
+from .services import dashboard_sessions, is_session_open, visible_sessions
 
 
 def home(request):
@@ -32,9 +31,5 @@ def session_start(request, session_id):
     """
     # Бөтен топтың сессиясы — 404
     session = get_object_or_404(visible_sessions(request.user), pk=session_id)
-    now = timezone.now()
-    context = {
-        "session": session,
-        "is_open": session.opens_at <= now < session.closes_at,
-    }
+    context = {"session": session, "is_open": is_session_open(session)}
     return render(request, "quiz/session_start.html", context)

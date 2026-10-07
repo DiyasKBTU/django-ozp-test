@@ -1,3 +1,4 @@
+import random
 from collections import Counter
 from datetime import timedelta
 from io import StringIO
@@ -15,13 +16,19 @@ from django.utils import timezone
 from django.utils.html import escape
 from django.utils.translation import override
 
+from apps.accounts.models import StudyGroup
+
 from .constants import (
     ANSWERS_PER_QUESTION,
+    CONTEXTS_PER_TEST,
     LEVEL_QUOTA,
     MIN_CONTEXTS,
     MIN_QUESTIONS_PER_SUBTOPIC,
     QUESTIONS_PER_CONTEXT,
+    QUESTIONS_TOTAL,
+    SINGLE_QUESTIONS_PER_SUBTOPIC,
     SUBTOPICS_COUNT,
+    TEST_DURATION_MINUTES,
 )
 from .forms import AnswerInlineFormSet
 from .models import (
@@ -36,10 +43,11 @@ from .models import (
     Subtopic,
     Topic,
 )
-from apps.accounts.models import StudyGroup
-
 from .services import (
+    AttemptError,
     bank_coverage,
+    build_variant,
+    create_attempt,
     dashboard_sessions,
     split_duration,
     visible_sessions,
@@ -896,6 +904,221 @@ class SessionStartTests(StudentTestCase):
                 # staff_member_required бетті көрсетпей, admin кіру бетіне жібереді
                 self.assertEqual(response.status_code, 302)
                 self.assertIn(reverse("admin:login"), response["Location"])
+
+
+# ---------- 4-кезең: нұсқа құру ----------
+
+
+class VariantTestCase(TestCase):
+    """Тақырыптар мен демо банк бір рет жүктеледі (әр тілде жеткілікті сұрақ)."""
+
+    # Әр тексеруде бірнеше кездейсоқ нұсқа құрылады
+    SEEDS = range(15)
+
+    @classmethod
+    def setUpTestData(cls):
+        run_command("load_topics")
+        run_command("load_demo")
+
+    def variant_questions(self, language, seed):
+        """Нұсқаны құрып, сұрақтарды тест ретімен қайтарады."""
+        question_ids = build_variant(language, random.Random(seed))
+        questions = Question.objects.select_related("subtopic").in_bulk(question_ids)
+        return [questions[question_id] for question_id in question_ids]
+
+
+class BuildVariantTests(VariantTestCase):
+    def test_structure_matches_specification(self):
+        single_count = SUBTOPICS_COUNT * SINGLE_QUESTIONS_PER_SUBTOPIC
+        for language in ["kk", "ru"]:
+            for seed in self.SEEDS:
+                with self.subTest(language=language, seed=seed):
+                    questions = self.variant_questions(language, seed)
+                    singles = questions[:single_count]
+                    context_part = questions[single_count:]
+
+                    # 50 әртүрлі сұрақ, бәрі таңдалған тілде және белсенді
+                    self.assertEqual(len(questions), QUESTIONS_TOTAL)
+                    self.assertEqual(len({q.pk for q in questions}), QUESTIONS_TOTAL)
+                    self.assertTrue(all(q.language == language for q in questions))
+                    self.assertTrue(all(q.is_active for q in questions))
+
+                    # 1–40: жеке сұрақтар, әр тақырыпшадан 2, тақырыпша ретімен
+                    self.assertTrue(all(q.context_id is None for q in singles))
+                    numbers = [q.subtopic.number for q in singles]
+                    self.assertEqual(numbers, sorted(numbers))
+                    self.assertEqual(
+                        Counter(numbers),
+                        {n: SINGLE_QUESTIONS_PER_SUBTOPIC for n in range(1, SUBTOPICS_COUNT + 1)},
+                    )
+
+                    # 41–50: 2 контекст × 5 сұрақ, әр контекстің сұрақтары қатар тұрады
+                    blocks = [
+                        context_part[i : i + QUESTIONS_PER_CONTEXT]
+                        for i in range(0, len(context_part), QUESTIONS_PER_CONTEXT)
+                    ]
+                    self.assertEqual(len(blocks), CONTEXTS_PER_TEST)
+                    context_ids = [block[0].context_id for block in blocks]
+                    self.assertNotIn(None, context_ids)
+                    self.assertEqual(len(set(context_ids)), CONTEXTS_PER_TEST)
+                    for block in blocks:
+                        self.assertEqual({q.context_id for q in block}, {block[0].context_id})
+
+                    # Деңгейлер: A/B/C = 13/30/7
+                    self.assertEqual(Counter(q.level for q in questions), LEVEL_QUOTA)
+
+    def test_variants_are_random(self):
+        first = {q.pk for q in self.variant_questions("kk", seed=1)}
+        second = {q.pk for q in self.variant_questions("kk", seed=2)}
+        self.assertNotEqual(first, second)
+
+    def test_inactive_questions_and_contexts_are_never_chosen(self):
+        # Әр тақырыпшадан бір B сұрақты және бір контекстті белсенді емес етеміз
+        for subtopic in Subtopic.objects.all():
+            question = subtopic.questions.filter(
+                language="kk", context__isnull=True, level="B"
+            ).first()
+            question.is_active = False
+            question.save()
+        inactive_context = Context.objects.filter(language="kk").order_by("id").first()
+        inactive_context.is_active = False
+        inactive_context.save()
+
+        inactive_ids = set(Question.objects.filter(is_active=False).values_list("id", flat=True))
+        for seed in self.SEEDS:
+            with self.subTest(seed=seed):
+                questions = self.variant_questions("kk", seed)
+                self.assertFalse({q.pk for q in questions} & inactive_ids)
+                self.assertNotIn(inactive_context.pk, {q.context_id for q in questions})
+
+    def test_rare_level_is_still_placed_exactly(self):
+        """
+        C деңгейлі жеке сұрақ тек 5 тақырыпшада қалса, квота (5) дәл толуы үшін
+        сол бесеуінің әрқайсысынан C сұрақ алынуы керек (алмастыру қадамы).
+        """
+        singles = Question.objects.filter(language="kk", context__isnull=True, level="C")
+        keep_subtopics = [1, 5, 9, 14, 20]
+        singles.exclude(subtopic__number__in=keep_subtopics).update(is_active=False)
+        for subtopic_number in keep_subtopics:
+            extra = singles.filter(subtopic__number=subtopic_number, is_active=True)[1:]
+            Question.objects.filter(pk__in=[q.pk for q in extra]).update(is_active=False)
+
+        for seed in self.SEEDS:
+            with self.subTest(seed=seed):
+                questions = self.variant_questions("kk", seed)
+                self.assertEqual(Counter(q.level for q in questions), LEVEL_QUOTA)
+                c_singles = [q.subtopic.number for q in questions if q.level == "C" and not q.context_id]
+                self.assertEqual(sorted(c_singles), keep_subtopics)
+
+    def test_missing_level_falls_back_and_logs_warning(self):
+        # Жеке C сұрақтар мүлде жоқ: басқа деңгей алынады, журналға ескерту жазылады
+        Question.objects.filter(language="kk", context__isnull=True, level="C").update(
+            is_active=False
+        )
+        with self.assertLogs("apps.quiz.services", level="WARNING") as logs:
+            questions = self.variant_questions("kk", seed=3)
+        self.assertIn("квотасына дәл сәйкес емес", logs.output[0])
+        self.assertEqual(len(questions), QUESTIONS_TOTAL)
+        numbers = Counter(q.subtopic.number for q in questions if not q.context_id)
+        self.assertEqual(set(numbers.values()), {SINGLE_QUESTIONS_PER_SUBTOPIC})
+
+    def test_not_enough_contexts(self):
+        for context in Context.objects.filter(language="ru")[1:]:
+            context.is_active = False
+            context.save()
+        with self.assertLogs("apps.quiz.services", level="WARNING"):
+            with self.assertRaises(AttemptError):
+                build_variant("ru")
+
+    def test_context_with_inactive_question_is_not_used(self):
+        # Бір сұрағы белсенді емес контекст толық емес (4 / 5) — тестке жарамайды
+        broken = Context.objects.filter(language="ru").order_by("id").first()
+        broken.questions.filter(pk=broken.questions.first().pk).update(is_active=False)
+        for seed in self.SEEDS:
+            with self.subTest(seed=seed):
+                questions = self.variant_questions("ru", seed)
+                self.assertNotIn(broken.pk, {q.context_id for q in questions})
+
+    def test_subtopic_without_questions(self):
+        Question.objects.filter(
+            language="kk", context__isnull=True, subtopic__number=7
+        ).update(is_active=False)
+        with self.assertLogs("apps.quiz.services", level="WARNING"):
+            with self.assertRaises(AttemptError):
+                build_variant("kk")
+
+
+class CreateAttemptTests(VariantTestCase):
+    def setUp(self):
+        self.student = User.objects.create_user(username="student", password="pass12345")
+        self.now = timezone.now()
+        self.session = make_session(
+            opens_at=self.now - timedelta(hours=1), closes_at=self.now + timedelta(hours=3)
+        )
+
+    def test_creates_50_questions_with_shuffled_answers(self):
+        attempt = create_attempt(self.student, self.session, "ru", now=self.now, rng=random.Random(5))
+        items = list(attempt.items.select_related("question"))
+        self.assertEqual([item.order for item in items], list(range(1, QUESTIONS_TOTAL + 1)))
+        self.assertEqual(attempt.language, "ru")
+        self.assertEqual(attempt.status, Attempt.Status.IN_PROGRESS)
+        self.assertTrue(all(item.question.language == "ru" for item in items))
+        self.assertTrue(all(item.selected is None for item in items))
+
+        sorted_orders = 0
+        for item in items:
+            answer_ids = list(item.question.answers.values_list("id", flat=True))
+            # Нұсқалар реті — сол сұрақтың 4 жауабының алмастыруы
+            self.assertEqual(sorted(item.answer_order), sorted(answer_ids))
+            self.assertEqual(len(item.answer_order), ANSWERS_PER_QUESTION)
+            sorted_orders += item.answer_order == sorted(answer_ids)
+        # Реті араластырылған (50 сұрақтың бәрі өз ретімен қалуы мүмкін емес)
+        self.assertLess(sorted_orders, QUESTIONS_TOTAL // 2)
+
+    def test_deadline_is_125_minutes(self):
+        attempt = create_attempt(self.student, self.session, "kk", now=self.now)
+        self.assertEqual(attempt.started_at, self.now)
+        self.assertEqual(attempt.deadline, self.now + timedelta(minutes=TEST_DURATION_MINUTES))
+
+    def test_deadline_does_not_exceed_session_close(self):
+        self.session.closes_at = self.now + timedelta(minutes=30)
+        self.session.save()
+        attempt = create_attempt(self.student, self.session, "kk", now=self.now)
+        self.assertEqual(attempt.deadline, self.session.closes_at)
+
+    def test_session_must_be_open(self):
+        moments = [
+            self.session.opens_at - timedelta(seconds=1),  # әлі ашылмаған
+            self.session.closes_at,  # жабылды
+            self.session.closes_at + timedelta(minutes=1),
+        ]
+        for moment in moments:
+            with self.subTest(moment=moment):
+                with self.assertRaises(AttemptError):
+                    create_attempt(self.student, self.session, "kk", now=moment)
+        # Ашылған сәтте бастауға болады
+        create_attempt(self.student, self.session, "kk", now=self.session.opens_at)
+        self.assertEqual(Attempt.objects.count(), 1)
+
+    def test_inactive_session(self):
+        self.session.is_active = False
+        self.session.save()
+        with self.assertRaises(AttemptError):
+            create_attempt(self.student, self.session, "kk", now=self.now)
+
+    def test_only_one_attempt_per_session(self):
+        create_attempt(self.student, self.session, "kk", now=self.now)
+        with self.assertRaises(AttemptError):
+            create_attempt(self.student, self.session, "ru", now=self.now)
+        self.assertEqual(Attempt.objects.count(), 1)
+        self.assertEqual(AttemptQuestion.objects.count(), QUESTIONS_TOTAL)
+
+    def test_nothing_saved_when_bank_is_incomplete(self):
+        Context.objects.filter(language="kk").update(is_active=False)
+        with self.assertLogs("apps.quiz.services", level="WARNING"):
+            with self.assertRaises(AttemptError):
+                create_attempt(self.student, self.session, "kk", now=self.now)
+        self.assertFalse(Attempt.objects.exists())
 
 
 # ---------- Екі тіл ----------

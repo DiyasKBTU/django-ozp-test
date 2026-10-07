@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-07 11:19+0500\n"
+"POT-Creation-Date: 2026-10-07 11:32+0500\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -16,6 +16,7 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n!=1);\n"
+
 #: .\apps\accounts\admin.py:30 .\apps\accounts\models.py:13
 #: .\apps\accounts\models.py:35
 msgid "топ"
@@ -503,6 +504,21 @@ msgstr ""
 msgid "нұсқадағы сұрақтар"
 msgstr ""
 
+#: .\apps\quiz\services.py:266
+#, python-format
+msgid ""
+"Банкте «%(language)s» тіліндегі сұрақтар жеткіліксіз, тестті бастау мүмкін "
+"емес. Оқытушыға хабарлаңыз."
+msgstr ""
+
+#: .\apps\quiz\services.py:452 .\templates\quiz\session_start.html:16
+msgid "Бұл сессия қазір ашық емес."
+msgstr ""
+
+#: .\apps\quiz\services.py:454
+msgid "Сіз бұл сессияда тестті бұрын бастағансыз."
+msgstr ""
+
 #: .\apps\quiz\teacher_views.py:69
 msgid "Сұрақ сақталды. Келесісін енгізіңіз."
 msgstr ""
@@ -703,10 +719,6 @@ msgstr ""
 
 #: .\templates\quiz\session_start.html:14
 msgid "Тестті бастау мүмкіндігі жақын арада қосылады."
-msgstr ""
-
-#: .\templates\quiz\session_start.html:16
-msgid "Бұл сессия қазір ашық емес."
 msgstr ""
 
 #: .\templates\quiz\session_start.html:18
