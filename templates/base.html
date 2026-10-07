@@ -111,7 +111,8 @@
 </nav>
 {% endwith %}
 
-<main class="container">
+{# pb-5: беттің соңындағы батырмалар терезе шетіне жабысып тұрмасын #}
+<main class="container pb-5">
     {% if messages %}
         {% for message in messages %}
             <div class="alert alert-{% if message.tags == 'error' %}danger{% else %}{{ message.tags|default:'info' }}{% endif %}">{{ message }}</div>
