@@ -2,11 +2,12 @@ from django import forms
 from django.contrib.auth import password_validation
 from django.contrib.auth.forms import AuthenticationForm, UserCreationForm
 from django.contrib.auth.models import User
+from django.forms.models import BaseInlineFormSet, construct_instance
 from django.utils.translation import gettext_lazy as _
 
 from apps.quiz.forms import add_bootstrap_classes
 
-from .models import StudyGroup
+from .models import Profile, StudyGroup
 
 # Django-ның қазақша аудармасында жоқ мәтіндер (ағылшынша шықпауы үшін)
 USERNAME_LABEL = _("Логин")
@@ -76,3 +77,18 @@ class LoginForm(AuthenticationForm):
         self.fields["username"].label = USERNAME_LABEL
         self.fields["password"].label = PASSWORD_LABEL
         add_bootstrap_classes(self)
+
+
+class ProfileInlineFormSet(BaseInlineFormSet):
+    """
+    Admin-дегі профиль (топ, оқытушының пәндері). Жаңа қолданушы сақталғанда
+    профильді post_save сигналы жасап қояды, сондықтан inline жаңа профиль
+    жасамай, сол профильді толтырады (әйтпесе UNIQUE қатесі шығады).
+    """
+
+    def save_new(self, form, commit=True):
+        profile = Profile.objects.filter(user=self.instance).first()
+        if profile is None:
+            return super().save_new(form, commit=commit)
+        form.instance = construct_instance(form, profile)
+        return form.save(commit=commit)

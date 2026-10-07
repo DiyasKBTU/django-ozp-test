@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-07 17:35+0500\n"
+"POT-Creation-Date: 2026-10-07 17:58+0500\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -17,7 +17,24 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n!=1);\n"
 
-#: .\apps\accounts\admin.py:33 .\apps\accounts\models.py:19
+#: .\apps\accounts\admin.py:42
+msgid "Аты-жөні"
+msgstr ""
+
+#: .\apps\accounts\admin.py:44
+msgid "Оқытушы"
+msgstr ""
+
+#: .\apps\accounts\admin.py:48
+msgid "Оқытушы болса белгілеңіз және төмендегі профильде пәндерін таңдаңыз."
+msgstr ""
+
+#: .\apps\accounts\admin.py:63
+#, python-format
+msgid "%(user)s — оқытушы, бірақ оған пән тағайындалмаған."
+msgstr ""
+
+#: .\apps\accounts\admin.py:66 .\apps\accounts\models.py:19
 #: .\apps\accounts\models.py:41
 msgid "топ"
 msgstr ""
@@ -26,55 +43,55 @@ msgstr ""
 msgid "Қолданушылар мен топтар"
 msgstr ""
 
-#: .\apps\accounts\forms.py:12 .\apps\quiz\services.py:802
+#: .\apps\accounts\forms.py:13 .\apps\quiz\services.py:802
 msgid "Логин"
 msgstr ""
 
-#: .\apps\accounts\forms.py:13
+#: .\apps\accounts\forms.py:14
 msgid "Құпия сөз"
 msgstr ""
 
-#: .\apps\accounts\forms.py:19
+#: .\apps\accounts\forms.py:20
 msgid "Аты"
 msgstr ""
 
-#: .\apps\accounts\forms.py:20
+#: .\apps\accounts\forms.py:21
 msgid "Тегі"
 msgstr ""
 
-#: .\apps\accounts\forms.py:22
+#: .\apps\accounts\forms.py:23
 msgid "Тобы"
 msgstr ""
 
-#: .\apps\accounts\forms.py:24
+#: .\apps\accounts\forms.py:25
 msgid "— тізімнен таңдаңыз —"
 msgstr ""
 
-#: .\apps\accounts\forms.py:28
+#: .\apps\accounts\forms.py:29
 msgid "Екі құпия сөз бірдей емес."
 msgstr ""
 
-#: .\apps\accounts\forms.py:36
+#: .\apps\accounts\forms.py:37
 msgid "Бұл логин бос емес, басқасын таңдаңыз."
 msgstr ""
 
-#: .\apps\accounts\forms.py:38
+#: .\apps\accounts\forms.py:39
 msgid "Логинде тек әріптер, сандар және @ . + - _ белгілері болуы мүмкін."
 msgstr ""
 
-#: .\apps\accounts\forms.py:47
+#: .\apps\accounts\forms.py:48
 msgid "150 таңбаға дейін: әріптер, сандар және @ . + - _ белгілері."
 msgstr ""
 
-#: .\apps\accounts\forms.py:53
+#: .\apps\accounts\forms.py:54
 msgid "Құпия сөзді қайталаңыз"
 msgstr ""
 
-#: .\apps\accounts\forms.py:70
+#: .\apps\accounts\forms.py:71
 msgid "Логин немесе құпия сөз қате."
 msgstr ""
 
-#: .\apps\accounts\forms.py:71
+#: .\apps\accounts\forms.py:72
 msgid "Бұл тіркелгі бұғатталған."
 msgstr ""
 
@@ -143,11 +160,11 @@ msgstr ""
 msgid "Тек сандардан тұрмауы керек."
 msgstr ""
 
-#: .\apps\quiz\admin.py:105 .\apps\quiz\models.py:176 .\apps\quiz\models.py:256
+#: .\apps\quiz\admin.py:151 .\apps\quiz\models.py:176 .\apps\quiz\models.py:256
 msgid "мәтіні"
 msgstr ""
 
-#: .\apps\quiz\admin.py:124 .\apps\quiz\models.py:225
+#: .\apps\quiz\admin.py:170 .\apps\quiz\models.py:225
 msgid "сұрақтар"
 msgstr ""
 

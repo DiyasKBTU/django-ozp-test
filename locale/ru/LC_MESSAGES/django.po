@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-07 17:35+0500\n"
+"POT-Creation-Date: 2026-10-07 17:58+0500\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -19,7 +19,24 @@ msgstr ""
 "n%10<=4 && (n%100<12 || n%100>14) ? 1 : n%10==0 || (n%10>=5 && n%10<=9) || "
 "(n%100>=11 && n%100<=14)? 2 : 3);\n"
 
-#: .\apps\accounts\admin.py:33 .\apps\accounts\models.py:19
+#: .\apps\accounts\admin.py:42
+msgid "Аты-жөні"
+msgstr "Имя и фамилия"
+
+#: .\apps\accounts\admin.py:44
+msgid "Оқытушы"
+msgstr "Преподаватель"
+
+#: .\apps\accounts\admin.py:48
+msgid "Оқытушы болса белгілеңіз және төмендегі профильде пәндерін таңдаңыз."
+msgstr "Отметьте, если это преподаватель, и выберите его предметы в профиле ниже."
+
+#: .\apps\accounts\admin.py:63
+#, python-format
+msgid "%(user)s — оқытушы, бірақ оған пән тағайындалмаған."
+msgstr "%(user)s — преподаватель, но ему не назначен предмет."
+
+#: .\apps\accounts\admin.py:66 .\apps\accounts\models.py:19
 #: .\apps\accounts\models.py:41
 msgid "топ"
 msgstr "группа"
@@ -28,55 +45,55 @@ msgstr "группа"
 msgid "Қолданушылар мен топтар"
 msgstr "Пользователи и группы"
 
-#: .\apps\accounts\forms.py:12 .\apps\quiz\services.py:802
+#: .\apps\accounts\forms.py:13 .\apps\quiz\services.py:802
 msgid "Логин"
 msgstr "Логин"
 
-#: .\apps\accounts\forms.py:13
+#: .\apps\accounts\forms.py:14
 msgid "Құпия сөз"
 msgstr "Пароль"
 
-#: .\apps\accounts\forms.py:19
+#: .\apps\accounts\forms.py:20
 msgid "Аты"
 msgstr "Имя"
 
-#: .\apps\accounts\forms.py:20
+#: .\apps\accounts\forms.py:21
 msgid "Тегі"
 msgstr "Фамилия"
 
-#: .\apps\accounts\forms.py:22
+#: .\apps\accounts\forms.py:23
 msgid "Тобы"
 msgstr "Группа"
 
-#: .\apps\accounts\forms.py:24
+#: .\apps\accounts\forms.py:25
 msgid "— тізімнен таңдаңыз —"
 msgstr "— выберите из списка —"
 
-#: .\apps\accounts\forms.py:28
+#: .\apps\accounts\forms.py:29
 msgid "Екі құпия сөз бірдей емес."
 msgstr "Пароли не совпадают."
 
-#: .\apps\accounts\forms.py:36
+#: .\apps\accounts\forms.py:37
 msgid "Бұл логин бос емес, басқасын таңдаңыз."
 msgstr "Этот логин уже занят, выберите другой."
 
-#: .\apps\accounts\forms.py:38
+#: .\apps\accounts\forms.py:39
 msgid "Логинде тек әріптер, сандар және @ . + - _ белгілері болуы мүмкін."
 msgstr "Логин может содержать только буквы, цифры и символы @ . + - _."
 
-#: .\apps\accounts\forms.py:47
+#: .\apps\accounts\forms.py:48
 msgid "150 таңбаға дейін: әріптер, сандар және @ . + - _ белгілері."
 msgstr "До 150 символов: буквы, цифры и символы @ . + - _."
 
-#: .\apps\accounts\forms.py:53
+#: .\apps\accounts\forms.py:54
 msgid "Құпия сөзді қайталаңыз"
 msgstr "Повторите пароль"
 
-#: .\apps\accounts\forms.py:70
+#: .\apps\accounts\forms.py:71
 msgid "Логин немесе құпия сөз қате."
 msgstr "Неверный логин или пароль."
 
-#: .\apps\accounts\forms.py:71
+#: .\apps\accounts\forms.py:72
 msgid "Бұл тіркелгі бұғатталған."
 msgstr "Эта учётная запись заблокирована."
 
@@ -145,11 +162,11 @@ msgstr "Пароль не может состоять только из цифр
 msgid "Тек сандардан тұрмауы керек."
 msgstr "Не может состоять только из цифр."
 
-#: .\apps\quiz\admin.py:105 .\apps\quiz\models.py:176 .\apps\quiz\models.py:256
+#: .\apps\quiz\admin.py:151 .\apps\quiz\models.py:176 .\apps\quiz\models.py:256
 msgid "мәтіні"
 msgstr "текст"
 
-#: .\apps\quiz\admin.py:124 .\apps\quiz\models.py:225
+#: .\apps\quiz\admin.py:170 .\apps\quiz\models.py:225
 msgid "сұрақтар"
 msgstr "вопросы"
 
