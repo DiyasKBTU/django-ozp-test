@@ -5,19 +5,19 @@
 | Что | Значение |
 | --- | --- |
 | Сайт | https://pbbtest.oaiu.kz |
-| Сервер | `185.129.48.252` — **тот же, где уже работают `oaiu.kz` и `ai.oaiu.kz`** |
-| DNS | A-запись `pbbtest.oaiu.kz → 185.129.48.252` уже есть ✅ |
+| Сервер | `cloud-001`: Ubuntu 24.04, 1 ядро, 1 ГБ RAM; **уже работает телеграм-бот** (`127.0.0.1:8001`, сайт nginx `django-telegrambot-university`) |
+| DNS | `pbbtest.oaiu.kz` должен указывать на IP `cloud-001` (проверка — шаг 0) |
 | Репозиторий | https://github.com/DiyasKBTU/django-ozp-test (публичный) |
 | Папка проекта / системный пользователь | `/srv/ozp-test` / `ozp` |
 | База PostgreSQL / её пользователь | `ozp_test` / `ozp` |
-| Сервис systemd (Gunicorn) | `ozp-test`, слушает `127.0.0.1:8001` |
+| Сервис systemd (Gunicorn) | `ozp-test`, 2 воркера, слушает `127.0.0.1:8002` |
 | Бэкапы | `/var/backups/ozp-test` (14 дней) |
 
 Схема: браузер → **Nginx** (HTTPS, статика, картинки) → **Gunicorn** (Django) → **PostgreSQL**.
 
-> **Главное правило для этого сервера:** на нём уже живут другие сайты. Ничего чужого не удаляем и не перезапускаем: **не** удаляйте `/etc/nginx/sites-enabled/default` и другие конфиги, **не** меняйте часовой пояс сервера, **не** включайте `ufw`, если он сейчас выключен (можно потерять SSH). Все команды ниже добавляют только своё.
+> **Главное правило для этого сервера:** на нём уже работает бот. Ничего чужого не удаляем и не перезапускаем: **не** трогайте конфиг `django-telegrambot-university`, порт 8001 и базу бота, **не** меняйте часовой пояс сервера, **не** включайте `ufw` (сейчас inactive — можно потерять SSH). Все команды ниже добавляют только своё.
 
-Проверено заранее на чистых Ubuntu 24.04 и Debian 12 (2 ядра / 2 ГБ): установка по этой инструкции, 308 автотестов (Python 3.11–3.13), сквозной сценарий админ → преподаватель → студент, нагрузка 300 студентов (16 800 запросов, 0 ошибок), бэкап → восстановление, перезагрузка.
+Проверено заранее: установка по этой инструкции — на копии `cloud-001` (Ubuntu 24.04, 1 ядро / 1 ГБ, бот на 8001 с сайтом в nginx и заданием в cron — после установки работают как прежде); на чистых Ubuntu 24.04 и Debian 12 (2 ядра / 2 ГБ) — 308 автотестов (Python 3.11–3.13), сквозной сценарий админ → преподаватель → студент, нагрузка 300 студентов (16 800 запросов, 0 ошибок), бэкап → восстановление, перезагрузка.
 
 ---
 
@@ -39,178 +39,161 @@
 
 ## 1. Первая установка
 
-Подключитесь к серверу пользователем с `sudo`: `ssh ВАШ_ПОЛЬЗОВАТЕЛЬ@185.129.48.252`.
+Все команды — **на сервере, от root** (`ssh root@IP_СЕРВЕРА`). Если вы вошли не root, добавляйте `sudo` перед командами без `sudo -u`. Шаги 2–4 выполняйте **в одной SSH-сессии**: пароль базы хранится в переменной `$DB_PASS` до шага 4.
 
-### 1.1. Осмотр сервера (ничего не меняет)
+Папку вручную создавать не нужно — `/srv/ozp-test` создаётся на шаге 3. Все конфиги проекта (`gunicorn.service`, `nginx.conf`, `backup.sh`) уже указывают на этот путь.
+
+### Шаг 0. Проверки (ничего не меняют)
 
 ```bash
-head -2 /etc/os-release              # Debian 12 / Ubuntu 22.04+ — подходят
-python3 --version                    # нужен 3.11 или новее
-nginx -v
-psql --version 2>/dev/null || echo "PostgreSQL не установлен"
-ls /etc/nginx/sites-enabled/         # чужие сайты — не трогаем
-sudo ss -ltnp | grep -E ':8001 |:5432 ' || echo "порт 8001 свободен"
-free -h; nproc; df -h /
-timedatectl | grep "Time zone"       # запомните: UTC или Asia/Almaty (нужно для cron)
-sudo ufw status                      # если inactive — так и оставляем
+curl -4 -s ifconfig.me; echo                      # IP этого сервера
+getent hosts pbbtest.oaiu.kz                      # куда сейчас указывает поддомен
+ss -ltnp | grep ':8002 ' || echo "8002 свободен"
+grep -rn "pbbtest" /etc/nginx/ || echo "pbbtest в nginx не занят"
 ```
 
-Если порт `8001` уже занят, выберите свободный (например, `8011`) и замените `8001` в двух файлах на шаге 1.6: `/etc/systemd/system/ozp-test.service` и `/etc/nginx/sites-available/ozp-test`.
+- **Если IP сервера ≠ IP поддомена** — попросите того, кто управляет DNS `oaiu.kz`, сделать A-запись `pbbtest.oaiu.kz → IP сервера`. Шаги 1–6 можно делать сразу, шаг 7 (HTTPS) — после смены DNS.
+- **Если 8002 занят** — после шага 6 замените порт в `/etc/systemd/system/ozp-test.service` и `/etc/nginx/sites-available/ozp-test` (например, на 8003), затем `systemctl daemon-reload && systemctl restart ozp-test && systemctl reload nginx`.
 
-### 1.2. Пакеты
+### Шаг 1. Пакеты
 
-Ставятся только недостающие; уже установленные (nginx, postgresql) не ломаются. Полный `apt upgrade` на общем сервере не делаем — это решает администратор сервера.
+nginx и PostgreSQL уже установлены и обслуживают бота — их не переустанавливаем, ставим только недостающее:
 
 ```bash
-sudo apt update
-sudo apt install -y python3 python3-venv python3-dev git postgresql nginx gettext certbot python3-certbot-nginx
+apt update
+apt install -y python3-venv git gettext certbot python3-certbot-nginx
 ```
 
-### 1.3. База данных
-
-Пароль генерируем из букв и цифр (символы `@ : / #` ломают строку `DATABASE_URL`):
+### Шаг 2. База данных
 
 ```bash
-DB_PASS=$(openssl rand -hex 24); echo "$DB_PASS"     # СОХРАНИТЕ — понадобится в .env
+DB_PASS=$(openssl rand -hex 24)
 sudo -u postgres psql -c "CREATE USER ozp WITH PASSWORD '$DB_PASS';"
 sudo -u postgres psql -c "CREATE DATABASE ozp_test OWNER ozp ENCODING 'UTF8';"
 ```
 
-Другие базы на сервере это не затрагивает.
+Отдельная база и отдельный пользователь — база бота не затрагивается.
 
-### 1.4. Код и виртуальное окружение
+### Шаг 3. Системный пользователь, папка, код
 
 ```bash
-sudo adduser --system --group --no-create-home --home /srv/ozp-test ozp
-sudo mkdir /srv/ozp-test
-sudo chown ozp:ozp /srv/ozp-test
+adduser --system --group --no-create-home --home /srv/ozp-test ozp
+mkdir /srv/ozp-test
+chown ozp:ozp /srv/ozp-test
 sudo -u ozp git clone https://github.com/DiyasKBTU/django-ozp-test.git /srv/ozp-test
 cd /srv/ozp-test
 sudo -u ozp python3 -m venv .venv
 sudo -u ozp .venv/bin/pip install --no-cache-dir -r requirements.txt
 ```
 
-### 1.5. Файл `.env` (секреты)
+Сообщение `adduser: The home dir /srv/ozp-test you specified can't be accessed` — нормально, папка создаётся следующей командой.
+
+### Шаг 4. Файл `.env` (секреты создаются автоматически)
 
 ```bash
 cd /srv/ozp-test
-sudo -u ozp .venv/bin/python -c "from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())"
-sudo -u ozp cp .env.example .env
-sudo -u ozp nano .env
-sudo chmod 600 .env
-```
-
-Содержимое (подставьте ключ из первой команды и пароль из 1.3):
-
-```ini
-SECRET_KEY=СГЕНЕРИРОВАННЫЙ_КЛЮЧ
+SECRET=$(sudo -u ozp .venv/bin/python -c "from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())")
+sudo -u ozp tee .env > /dev/null <<EOF
+SECRET_KEY=$SECRET
 DEBUG=False
 ALLOWED_HOSTS=pbbtest.oaiu.kz
-DATABASE_URL=postgres://ozp:ПАРОЛЬ_ИЗ_1.3@localhost:5432/ozp_test
+DATABASE_URL=postgres://ozp:$DB_PASS@localhost:5432/ozp_test
 CSRF_TRUSTED_ORIGINS=https://pbbtest.oaiu.kz
 SECURE_HSTS_SECONDS=0
+EOF
+chmod 600 .env
+grep -c "postgres://ozp:[0-9a-f]\{48\}@" .env     # должно вывести 1
 ```
 
-`.env` не попадает в git. Никому не пересылайте его и не коммитьте.
+Если вывело `0` — переменная `$DB_PASS` потерялась (новая SSH-сессия). Задайте новый пароль: `DB_PASS=$(openssl rand -hex 24); sudo -u postgres psql -c "ALTER USER ozp WITH PASSWORD '$DB_PASS';"` и повторите шаг 4.
 
-### 1.6. Таблицы, статика, предметы, администратор
+`.env` не попадает в git; пароль базы потом можно посмотреть: `grep DATABASE_URL /srv/ozp-test/.env`.
+
+### Шаг 5. Таблицы, статика, предметы, администратор
 
 ```bash
 cd /srv/ozp-test
-sudo -u ozp .venv/bin/python manage.py migrate                      # создаёт таблицы
-sudo -u ozp .venv/bin/python manage.py collectstatic --noinput      # CSS/JS для Nginx
+sudo -u ozp .venv/bin/python manage.py migrate
+sudo -u ozp .venv/bin/python manage.py collectstatic --noinput
 sudo -u ozp .venv/bin/python manage.py compilemessages --ignore=.venv
-sudo -u ozp .venv/bin/python manage.py load_subjects                # 4 предмета, темы, подтемы
-sudo -u ozp .venv/bin/python manage.py createsuperuser              # ваш логин администратора
-sudo -u ozp mkdir -p media                                          # загружаемые картинки
+sudo -u ozp .venv/bin/python manage.py load_subjects
+sudo -u ozp .venv/bin/python manage.py createsuperuser      # ваш логин и пароль администратора
+sudo -u ozp mkdir -p media
 ```
 
 **`load_demo` на сервере не запускаем** — это демо-вопросы для разработки.
 
-### 1.7. Gunicorn (служба сайта)
+### Шаг 6. Gunicorn и Nginx
 
 ```bash
 cd /srv/ozp-test
-sudo cp deploy/gunicorn.service /etc/systemd/system/ozp-test.service
-sudo systemctl daemon-reload
-sudo systemctl enable --now ozp-test
-sudo systemctl status ozp-test --no-pager     # active (running)
-curl -sI -H "Host: pbbtest.oaiu.kz" http://127.0.0.1:8001/ | head -1   # 301 — это нормально (Django просит HTTPS)
+cp deploy/gunicorn.service /etc/systemd/system/ozp-test.service
+systemctl daemon-reload
+systemctl enable --now ozp-test
+systemctl is-active ozp-test                                            # active
+curl -sI -H "Host: pbbtest.oaiu.kz" http://127.0.0.1:8002/ | head -1     # 301 — нормально, Django просит HTTPS
+
+cp deploy/nginx.conf /etc/nginx/sites-available/ozp-test
+ln -s /etc/nginx/sites-available/ozp-test /etc/nginx/sites-enabled/
+chmod 755 /srv/ozp-test
+nginx -t && systemctl reload nginx
 ```
 
-3 воркера ≈ 70 МБ памяти каждый. На тестах 3 воркера на 2 ядрах выдержали 300 одновременных студентов.
+`reload`, а не `restart`: сайт бота не прерывается. Если `nginx -t` выдал ошибку — **не делайте reload**: `rm /etc/nginx/sites-enabled/ozp-test` и разберите текст ошибки.
 
-### 1.8. Nginx — добавляем свой сайт, чужие не трогаем
+Gunicorn: 2 воркера на `127.0.0.1:8002` (≈ 70 МБ каждый; вместе с базой сайт занимает ≈ 200 МБ памяти).
+
+### Шаг 7. HTTPS (когда поддомен указывает на этот сервер)
 
 ```bash
-cd /srv/ozp-test
-sudo cp deploy/nginx.conf /etc/nginx/sites-available/ozp-test
-sudo ln -s /etc/nginx/sites-available/ozp-test /etc/nginx/sites-enabled/
-sudo chmod 755 /srv/ozp-test                 # Nginx должен читать staticfiles и media
-sudo nginx -t && sudo systemctl reload nginx # reload, не restart: другие сайты не прерываются
+getent hosts pbbtest.oaiu.kz            # должен показать IP из шага 0
+certbot --nginx -d pbbtest.oaiu.kz      # email, согласие (Y); certbot меняет только наш server-блок
+certbot renew --dry-run                 # автопродление работает
 ```
 
-Если `nginx -t` пишет ошибку — **не делайте reload**, удалите ссылку `sudo rm /etc/nginx/sites-enabled/ozp-test` и разберитесь (раздел 9).
-
-### 1.9. HTTPS (Let's Encrypt)
-
-```bash
-sudo certbot --nginx -d pbbtest.oaiu.kz     # email, согласие с условиями; certbot меняет только наш server-блок
-sudo certbot renew --dry-run                # продление работает
-systemctl list-timers | grep certbot        # таймер автопродления есть
-```
-
-Откройте https://pbbtest.oaiu.kz — должна открыться главная страница с замком. Затем включите HSTS:
+Откройте https://pbbtest.oaiu.kz — должна открыться главная с замком. Затем включите HSTS:
 
 ```bash
 cd /srv/ozp-test
 sudo -u ozp sed -i 's/^SECURE_HSTS_SECONDS=0/SECURE_HSTS_SECONDS=31536000/' .env
-sudo systemctl restart ozp-test
+systemctl restart ozp-test
 sudo -u ozp .venv/bin/python manage.py check --deploy
 ```
 
-`check --deploy` покажет 2 предупреждения — `W005` (поддомены) и `W021` (preload). **Это правильно, не включайте их:** иначе HSTS распространится на все поддомены `oaiu.kz`.
+`check --deploy` покажет 2 предупреждения — `W005` и `W021`. **Это правильно, не включайте их**: иначе HSTS распространится на все поддомены `oaiu.kz`.
 
-### 1.10. Бэкап и регулярные задачи
+### Шаг 8. Бэкап и cron
 
 ```bash
 cd /srv/ozp-test
-sudo cp deploy/backup.sh /usr/local/bin/ozp-backup.sh
-sudo chmod +x /usr/local/bin/ozp-backup.sh
-sudo /usr/local/bin/ozp-backup.sh            # проверка: «бэкап дайын: …»
-sudo crontab -e
+cp deploy/backup.sh /usr/local/bin/ozp-backup.sh
+chmod +x /usr/local/bin/ozp-backup.sh
+/usr/local/bin/ozp-backup.sh             # «бэкап дайын: …»
+(crontab -l 2>/dev/null; echo "30 22 * * * /usr/local/bin/ozp-backup.sh >> /var/log/ozp-backup.log 2>&1") | crontab -
+(crontab -u ozp -l 2>/dev/null; echo "*/5 * * * * cd /srv/ozp-test && .venv/bin/python manage.py finish_expired > /dev/null") | crontab -u ozp -
+crontab -l; crontab -u ozp -l
 ```
 
-Строка для root (время — по часовому поясу **сервера**, см. 1.1):
+Строки **добавляются** к существующим заданиям cron (задания бота сохраняются). Сервер в UTC: `22:30 UTC` = `03:30` по Алматы.
 
-```cron
-# Бэкап в 03:30 по Алматы. Сервер в UTC → 22:30 UTC; сервер в Asia/Almaty → замените на «30 3 * * *»
-30 22 * * * /usr/local/bin/ozp-backup.sh >> /var/log/ozp-backup.log 2>&1
-```
-
-Завершение просроченных тестов каждые 5 минут (`sudo crontab -u ozp -e`):
-
-```cron
-*/5 * * * * cd /srv/ozp-test && .venv/bin/python manage.py finish_expired > /dev/null
-```
-
-### 1.11. Финальная проверка
+### Шаг 9. Проверка
 
 ```bash
-curl -sI http://pbbtest.oaiu.kz/ | head -1                                  # 301 (на https)
-curl -sI https://pbbtest.oaiu.kz/ | grep -iE "^HTTP|strict-transport"       # 200 + HSTS
-curl -sI https://pbbtest.oaiu.kz/static/js/timer.js | head -1               # 200 (статика)
-curl -sI https://oaiu.kz/ | head -1; curl -sI https://ai.oaiu.kz/ | head -1 # соседние сайты живы
-sudo systemctl is-active ozp-test nginx postgresql cron
+curl -sI http://pbbtest.oaiu.kz/ | head -1                              # 301 (на https)
+curl -sI https://pbbtest.oaiu.kz/ | grep -iE "^HTTP|strict-transport"   # 200 + HSTS
+curl -sI https://pbbtest.oaiu.kz/static/js/timer.js | head -1           # 200 (статика)
+systemctl is-active ozp-test nginx postgresql cron                     # 4 × active
+ss -ltnp | grep -E ':8001 |:8002 '                                      # бот на 8001, наш сайт на 8002
 ```
 
 В браузере:
 
-- [ ] Вход в https://pbbtest.oaiu.kz/admin/ вашим логином.
+- [ ] Вход в https://pbbtest.oaiu.kz/admin/ вашим логином из шага 5.
 - [ ] Переключатель KK / RU меняет язык.
-- [ ] Преподаватель загружает вопрос с картинкой — картинка видна (`/media/`).
+- [ ] Преподаватель загружает вопрос с картинкой — картинка видна.
 - [ ] В вопросе по математике `\(\frac{1}{2}\)` показывается формулой.
-- [ ] На следующий день в `/var/backups/ozp-test` появился новый `db-*.sql.gz`.
+- [ ] Бот работает как раньше.
+- [ ] На следующий день в `/var/backups/ozp-test` есть новый `db-*.sql.gz`.
 
 ---
 
@@ -288,7 +271,7 @@ sudo systemctl restart ozp-test
 sudo systemctl is-active ozp-test && curl -sI https://pbbtest.oaiu.kz/ | head -1
 ```
 
-Если менялся `apps/quiz/data/subjects.json` — ещё `sudo -u ozp .venv/bin/python manage.py load_subjects`. Если менялись `deploy/nginx.conf` или `deploy/gunicorn.service`, скопируйте их заново (шаги 1.7–1.8). **Внимание:** certbot дописал HTTPS в установленный nginx-конфиг, поэтому после копирования nginx-конфига снова выполните `sudo certbot --nginx -d pbbtest.oaiu.kz` (на вопрос certbot выберите «Attempt to reinstall this existing certificate»).
+Если менялся `apps/quiz/data/subjects.json` — ещё `sudo -u ozp .venv/bin/python manage.py load_subjects`. Если менялись `deploy/nginx.conf` или `deploy/gunicorn.service`, скопируйте их заново (шаг 6). **Внимание:** certbot дописал HTTPS в установленный nginx-конфиг, поэтому после копирования nginx-конфига снова выполните `sudo certbot --nginx -d pbbtest.oaiu.kz` (на вопрос certbot выберите «Attempt to reinstall this existing certificate»).
 
 ---
 
@@ -318,8 +301,8 @@ sudo cp /var/backups/ozp-test/db-2026-10-15.sql.gz /var/backups/ozp-test/media-2
 
 ```powershell
 # на компьютере
-scp ВАШ_ПОЛЬЗОВАТЕЛЬ@185.129.48.252:~/db-2026-10-15.sql.gz .
-scp ВАШ_ПОЛЬЗОВАТЕЛЬ@185.129.48.252:~/media-2026-10-15.tar.gz .
+scp root@IP_СЕРВЕРА:~/db-2026-10-15.sql.gz .
+scp root@IP_СЕРВЕРА:~/media-2026-10-15.tar.gz .
 ```
 
 Потом удалите копии из домашней папки на сервере: `rm ~/*-2026-10-15.*`.
@@ -380,7 +363,7 @@ sudo tail -n 50 /var/log/nginx/error.log         # Nginx
 | **502 Bad Gateway** | Gunicorn не работает: `sudo systemctl status ozp-test`, журнал выше. Обычно ошибка в `.env` (опечатка, нет `SECRET_KEY`) или недоступна база (`sudo systemctl status postgresql`). |
 | **400 Bad Request** | Домен не в `ALLOWED_HOSTS` в `.env`. |
 | **403 «CSRF verification failed»** | `CSRF_TRUSTED_ORIGINS=https://pbbtest.oaiu.kz` в `.env`. Открывайте сайт по https. |
-| Открылся другой сайт / ошибка сертификата `ai.oaiu.kz` | Нет сертификата для pbbtest — выполните шаг 1.9. Проверка: `sudo nginx -T \| grep -n "server_name"`. |
+| Открылся другой сайт (бот) / ошибка сертификата | Нет сертификата для pbbtest — выполните шаг 7 (и проверьте DNS, шаг 0). Проверка: `sudo nginx -T \| grep -n "server_name"`. |
 | **ERR_TOO_MANY_REDIRECTS** | В nginx-конфиге потерялась строка `proxy_set_header X-Forwarded-Proto $scheme;`. |
 | Страница без стилей | `collectstatic` (раздел 4) и `sudo chmod 755 /srv/ozp-test`. |
 | **413** при загрузке картинки | Больше `client_max_body_size 12M` в nginx-конфиге. Картинки — до 2 МБ каждая. |
