@@ -3,6 +3,11 @@ from django.db import models
 from django.utils.translation import gettext_lazy as _
 
 
+# Топтың оқыту тілі — топтың тесттері осы тілде өтеді
+# (мәндері apps.quiz.models.Language-пен бірдей: kk / ru)
+GROUP_LANGUAGES = [("kk", _("Қазақша")), ("ru", _("Орысша"))]
+
+
 class StudyGroup(models.Model):
     """Студенттер тобы (мысалы, ИНФ-21); топ бір пәнге (мамандыққа) жатады."""
 
@@ -12,6 +17,13 @@ class StudyGroup(models.Model):
         on_delete=models.PROTECT,
         related_name="groups",
         verbose_name=_("пән"),
+    )
+    # Әдепкі мәні жоқ: топ құрған адам тілді өзі таңдауы керек
+    language = models.CharField(
+        _("оқыту тілі"),
+        max_length=2,
+        choices=GROUP_LANGUAGES,
+        help_text=_("Топ студенттерінің тесттері осы тілде өтеді."),
     )
 
     class Meta:

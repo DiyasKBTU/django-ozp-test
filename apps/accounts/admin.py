@@ -11,8 +11,8 @@ from .models import Profile, StudyGroup
 
 @admin.register(StudyGroup)
 class StudyGroupAdmin(TeacherSubjectAdminMixin, admin.ModelAdmin):
-    list_display = ["name", "subject"]
-    list_filter = ["subject"]
+    list_display = ["name", "subject", "language"]
+    list_filter = ["subject", "language"]
     search_fields = ["name"]
 
 

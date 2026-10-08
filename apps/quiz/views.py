@@ -8,7 +8,7 @@ from django.utils.translation import gettext as _
 from django.views.decorators.cache import never_cache
 
 from .constants import PRACTICE_QUESTIONS, QUESTIONS_TOTAL
-from .forms import AttemptAnswerForm, PracticeStartForm, StartAttemptForm
+from .forms import AttemptAnswerForm, PracticeStartForm
 from .models import Attempt, Language
 from .services import (
     AttemptError,
@@ -30,6 +30,7 @@ from .services import (
     remaining_seconds,
     save_answer,
     start_practice,
+    student_language,
     student_subject,
     teacher_subjects,
     unanswered_numbers,
@@ -59,7 +60,7 @@ def dashboard(request):
 
 
 def interface_language():
-    """Тест/жаттығу тілінің әдепкі мәні — интерфейс тілі (kk немесе ru)."""
+    """Интерфейс тілі (kk немесе ru) — топтың тілі белгісіз болғанда жаттығу тілінің әдепкісі."""
     return Language.RU if get_language() == "ru" else Language.KK
 
 
@@ -81,8 +82,8 @@ def redirect_to_attempt(attempt):
 @login_required
 def session_start(request, session_id):
     """
-    Тестті бастау: GET — ережелер және тест тілін таңдау,
-    POST — нұсқа құрып, 1-сұраққа өту.
+    Тестті бастау: GET — ережелер, POST — нұсқа құрып, 1-сұраққа өту.
+    Тест тілін студент таңдамайды — ол тобының оқыту тілі (StudyGroup.language).
     Студент бұл сессияда бұрын бастаса, жаңа әрекет жасалмайды — сол әрекетке қайтады.
     """
     # Бөтен топтың сессиясы — 404
@@ -94,10 +95,11 @@ def session_start(request, session_id):
     if attempt:
         return redirect_to_attempt(finish_if_expired(attempt))
 
-    form = StartAttemptForm(request.POST or None, initial={"language": interface_language()})
-    if request.method == "POST" and form.is_valid():
+    # Сессияны тек тобы бар студент көреді, сондықтан тіл әрқашан белгілі
+    language = student_language(request.user)
+    if request.method == "POST":
         try:
-            attempt = create_attempt(request.user, session, form.cleaned_data["language"])
+            attempt = create_attempt(request.user, session, language)
         except AttemptError as error:
             messages.error(request, str(error))
             return redirect("quiz:session_start", session.pk)
@@ -106,7 +108,7 @@ def session_start(request, session_id):
     context = {
         "session": session,
         "is_open": is_session_open(session),
-        "form": form,
+        "language_label": Language(language).label,
         "questions_total": QUESTIONS_TOTAL,
         "duration_minutes": session.subject.duration_minutes,
     }
@@ -228,8 +230,10 @@ def practice_start(request):
     Тақырыптар — тек студенттің пәнінен (тобы жоқ болса — тізім бос).
     """
     subject = student_subject(request.user)
+    # Әдепкі тіл — топтың тілі; жаттығу бағаланбайды, сондықтан тілді өзгертуге болады
+    language = student_language(request.user) or interface_language()
     form = PracticeStartForm(
-        request.POST or None, initial={"language": interface_language()}, subject=subject
+        request.POST or None, initial={"language": language}, subject=subject
     )
     if request.method == "POST" and form.is_valid():
         try:

@@ -24,7 +24,7 @@ class ProfileTests(TestCase):
         self.assertIsNone(user.profile.group)
 
     def test_profile_group(self):
-        group = StudyGroup.objects.create(name="ИНФ-21", subject=informatics())
+        group = StudyGroup.objects.create(name="ИНФ-21", subject=informatics(), language="kk")
         user = User.objects.create_user(username="student", password="pass12345")
         user.profile.group = group
         user.profile.save()
@@ -37,7 +37,7 @@ class ProfileTests(TestCase):
 
 class RegisterTests(TestCase):
     def setUp(self):
-        self.group = StudyGroup.objects.create(name="ИНФ-21", subject=informatics())
+        self.group = StudyGroup.objects.create(name="ИНФ-21", subject=informatics(), language="kk")
 
     def register_data(self, **overrides):
         data = {
@@ -210,7 +210,7 @@ class NavigationTests(TestCase):
 
 class RegisterCannotCreateTeacherTests(TestCase):
     def test_register_ignores_staff_flags(self):
-        group = StudyGroup.objects.create(name="ИНФ-21", subject=informatics())
+        group = StudyGroup.objects.create(name="ИНФ-21", subject=informatics(), language="kk")
         self.client.post(
             reverse("accounts:register"),
             {
@@ -331,8 +331,8 @@ class TeacherAdminAccessTests(TestCase):
         )
         self.teacher.profile.subjects.add(self.mathematics)
         self.client.force_login(self.teacher)
-        self.math_group = StudyGroup.objects.create(name="МАТ-21", subject=self.mathematics)
-        self.inf_group = StudyGroup.objects.create(name="ИНФ-21", subject=informatics())
+        self.math_group = StudyGroup.objects.create(name="МАТ-21", subject=self.mathematics, language="kk")
+        self.inf_group = StudyGroup.objects.create(name="ИНФ-21", subject=informatics(), language="kk")
         now = timezone.now()
         self.inf_session = ExamSession.objects.create(
             title="Информатика сессиясы",
@@ -391,10 +391,19 @@ class TeacherAdminAccessTests(TestCase):
     def test_teacher_can_create_group(self):
         response = self.client.post(
             reverse("admin:accounts_studygroup_add"),
-            {"name": "МАТ-22", "subject": self.mathematics.pk, "_save": "Save"},
+            {"name": "МАТ-22", "subject": self.mathematics.pk, "language": "ru", "_save": "Save"},
         )
         self.assertEqual(response.status_code, 302)
-        self.assertTrue(StudyGroup.objects.filter(name="МАТ-22").exists())
+        self.assertEqual(StudyGroup.objects.get(name="МАТ-22").language, "ru")
+
+    def test_group_language_is_required(self):
+        response = self.client.post(
+            reverse("admin:accounts_studygroup_add"),
+            {"name": "МАТ-23", "subject": self.mathematics.pk, "_save": "Save"},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("language", response.context["adminform"].form.errors)
+        self.assertFalse(StudyGroup.objects.filter(name="МАТ-23").exists())
 
     def test_teacher_cannot_manage_users_or_delete(self):
         forbidden = [

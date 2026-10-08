@@ -6,6 +6,7 @@ student001, student002, ... және солар үшін ғана ашық те�
     python manage.py loadtest_data                         # 100 аккаунт: student001–student100
     python manage.py loadtest_data --count 1000            # 1000 аккаунт: student001–student1000
     python manage.py loadtest_data --subject mathematics   # математика бойынша (әдепкі: informatics)
+    python manage.py loadtest_data --language ru           # тест тілі (топтың тілі, әдепкі: kk)
     python manage.py loadtest_data --delete                # аккаунттарды, сессияны, нәтижелерді өшіру
 
 Қайта іске қосуға болады: аккаунттар қайталанбайды, олардың бұрынғы әрекеттері
@@ -65,6 +66,12 @@ class Command(BaseCommand):
             help="Тест пәні (әдепкі: informatics).",
         )
         parser.add_argument(
+            "--language",
+            default="kk",
+            choices=["kk", "ru"],
+            help="Тест тілі — LOADTEST тобының оқыту тілі (әдепкі: kk).",
+        )
+        parser.add_argument(
             "--delete", action="store_true", help="Жүктеме тестінің барлық деректерін өшіру."
         )
 
@@ -79,13 +86,15 @@ class Command(BaseCommand):
             raise CommandError(
                 f"«{options['subject']}» пәні жоқ. Алдымен: python manage.py load_subjects"
             )
-        self.create_data(subject, options["count"], options["password"], options["hours"])
+        self.create_data(
+            subject, options["language"], options["count"], options["password"], options["hours"]
+        )
 
     @transaction.atomic
-    def create_data(self, subject, count, password, hours):
-        # Топтың пәні әр іске қосқанда --subject бойынша жаңартылады
+    def create_data(self, subject, language, count, password, hours):
+        # Топтың пәні мен тілі әр іске қосқанда --subject / --language бойынша жаңартылады
         group, _created = StudyGroup.objects.update_or_create(
-            name=GROUP_NAME, defaults={"subject": subject}
+            name=GROUP_NAME, defaults={"subject": subject, "language": language}
         )
         names = usernames(count)
 

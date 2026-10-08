@@ -23,19 +23,13 @@
             <li>{% translate "Бұл сессияда тестті бір рет қана тапсыруға болады." %}</li>
         </ul>
 
+        {# Тест тілі — топтың оқыту тілі (студент таңдамайды) #}
+        <p class="mb-3">
+            {% blocktranslate with language=language_label %}Тест тілі: <strong>{{ language }}</strong> (тобыңыздың оқыту тілі). Барлық сұрақ осы тілде болады.{% endblocktranslate %}
+        </p>
+
         <form method="post">
             {% csrf_token %}
-            <fieldset class="mb-3">
-                <legend class="h6">{{ form.language.label }}</legend>
-                {% for radio in form.language %}
-                    <div class="form-check form-check-inline">
-                        {{ radio.tag }}
-                        <label class="form-check-label" for="{{ radio.id_for_label }}">{{ radio.choice_label }}</label>
-                    </div>
-                {% endfor %}
-                {% for error in form.language.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
-                <div class="form-text">{% translate "Барлық сұрақ таңдалған тілде болады. Тестті бастағаннан кейін тілді өзгертуге болмайды." %}</div>
-            </fieldset>
             <button type="submit" class="btn btn-success">{% translate "Тестті бастау" %}</button>
             <a class="btn btn-outline-secondary" href="{% url 'quiz:dashboard' %}">{% translate "Кабинетке оралу" %}</a>
         </form>

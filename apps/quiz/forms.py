@@ -409,18 +409,6 @@ class ExamSessionAdminForm(forms.ModelForm):
 # ---------- Тест тапсыру (студент) ----------
 
 
-class StartAttemptForm(forms.Form):
-    """Тестті бастау: тест тілін таңдау (50 сұрақтың бәрі сол тілде болады)."""
-
-    language = forms.ChoiceField(
-        label=_("Тест тілі"), choices=Language.choices, widget=forms.RadioSelect
-    )
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        add_bootstrap_classes(self)
-
-
 class AttemptAnswerForm(forms.Form):
     """
     Сұраққа жауап (тест пен жаттығуда): таңдалған нұсқа тек осы сұрақтың

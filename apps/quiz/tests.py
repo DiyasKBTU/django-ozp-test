@@ -74,6 +74,7 @@ from .services import (
     remaining_seconds,
     save_answer,
     split_duration,
+    student_language,
     visible_sessions,
 )
 
@@ -98,7 +99,7 @@ def make_student(username="student", group=None, **extra):
     """Студент; әдепкіде «ИНФ-21» (информатика) тобында — студенттің пәні тобынан."""
     if group is None:
         group, _created = StudyGroup.objects.get_or_create(
-            name="ИНФ-21", defaults={"subject": informatics()}
+            name="ИНФ-21", defaults={"subject": informatics(), "language": "kk"}
         )
     student = User.objects.create_user(username=username, password="pass12345", **extra)
     student.profile.group = group
@@ -795,8 +796,8 @@ class StudentTestCase(TestCase):
     """Екі топ және ИНФ-21 тобындағы кірген студент."""
 
     def setUp(self):
-        self.group = StudyGroup.objects.create(name="ИНФ-21", subject=informatics())
-        self.other_group = StudyGroup.objects.create(name="ИНФ-22", subject=informatics())
+        self.group = StudyGroup.objects.create(name="ИНФ-21", subject=informatics(), language="kk")
+        self.other_group = StudyGroup.objects.create(name="ИНФ-22", subject=informatics(), language="kk")
         self.student = User.objects.create_user(username="student", password="pass12345")
         self.student.profile.group = self.group
         self.student.profile.save()
@@ -1368,16 +1369,23 @@ class TakeTestCase(VariantTestCase):
 
 
 class StartTestPageTests(TakeTestCase):
-    def test_start_page_shows_rules_and_language_choice(self):
+    def set_group_language(self, language):
+        group = self.student.profile.group
+        group.language = language
+        group.save()
+
+    def test_start_page_shows_rules_and_group_language(self):
         response = self.client.get(reverse("quiz:session_start", args=[self.session.pk]))
-        self.assertContains(response, 'id="id_language_0"')
-        self.assertContains(response, 'id="id_language_1"')
+        # Тілді таңдау жоқ — тобының тілі көрсетіледі
+        self.assertNotContains(response, 'type="radio"')
+        self.assertContains(response, "Тест тілі: <strong>Қазақша</strong>")
         self.assertContains(response, f"Сұрақтар саны: {QUESTIONS_TOTAL}")
         self.assertContains(response, f"{INFORMATICS_MINUTES} минут")
         self.assertContains(response, timezone.localtime(self.session.closes_at).strftime("%d.%m.%Y, %H:%M"))
 
-    def test_start_creates_attempt_in_chosen_language(self):
-        response = self.start("ru")
+    def test_start_uses_group_language(self):
+        self.set_group_language("ru")
+        response = self.start()
         attempt = Attempt.objects.get(user=self.student, session=self.session)
         self.assertRedirects(response, self.question_url(attempt, 1))
         self.assertEqual(attempt.language, "ru")
@@ -1419,9 +1427,17 @@ class StartTestPageTests(TakeTestCase):
         self.assertContains(response, "Бұл сессия қазір ашық емес.")
         self.assertNotContains(response, 'id="id_language_0"')
 
+    def test_posted_language_is_ignored(self):
+        # Студент формаға басқа тілді жіберсе де, тест тобының тілінде өтеді
+        self.start("ru")
+        attempt = Attempt.objects.get(user=self.student)
+        self.assertEqual(attempt.language, "kk")
+        self.assertFalse(attempt.items.exclude(question__language="kk").exists())
+
     def test_bank_error_is_shown(self):
+        self.set_group_language("ru")
         Question.objects.filter(language="ru").update(is_active=False)
-        response = self.start("ru")
+        response = self.start()
         self.assertFalse(Attempt.objects.exists())
         self.assertContains(self.client.get(response["Location"]), "жеткіліксіз")
 
@@ -1814,8 +1830,8 @@ class TeacherResultsTests(TestCase):
     def setUp(self):
         self.teacher = make_teacher()
         self.client.force_login(self.teacher)
-        self.group_a = StudyGroup.objects.create(name="ИНФ-21", subject=informatics())
-        self.group_b = StudyGroup.objects.create(name="ИНФ-22", subject=informatics())
+        self.group_a = StudyGroup.objects.create(name="ИНФ-21", subject=informatics(), language="kk")
+        self.group_b = StudyGroup.objects.create(name="ИНФ-22", subject=informatics(), language="kk")
         self.autumn = make_session(title="Күзгі сессия")
         self.spring = make_session(title="Көктемгі сессия")
         self.aigerim = self.make_student("aigerim", "Айгерім", "Сапарова", self.group_a)
@@ -1963,7 +1979,7 @@ class FullTranslationTests(VariantTestCase):
         Question.objects.filter(language="kk").delete()
         Context.objects.filter(language="kk").delete()
 
-        self.group = StudyGroup.objects.create(name="INF-21", subject=informatics())
+        self.group = StudyGroup.objects.create(name="INF-21", subject=informatics(), language="kk")
         self.student = User.objects.create_user(
             username="student", password="pass12345", first_name="Ivan", last_name="Petrov"
         )
@@ -2520,8 +2536,8 @@ class SessionSubjectFormTests(TestCase):
     def setUp(self):
         run_command("load_subjects")
         self.mathematics = Subject.objects.get(code="mathematics")
-        self.math_group = StudyGroup.objects.create(name="МАТ-21", subject=self.mathematics)
-        self.inf_group = StudyGroup.objects.create(name="ИНФ-21", subject=informatics())
+        self.math_group = StudyGroup.objects.create(name="МАТ-21", subject=self.mathematics, language="kk")
+        self.inf_group = StudyGroup.objects.create(name="ИНФ-21", subject=informatics(), language="kk")
 
     def form(self, *groups):
         today = timezone.localdate().strftime("%Y-%m-%d")
@@ -2576,7 +2592,7 @@ class SubjectDurationTests(TakeTestCase):
 
     def test_start_page_shows_subject_duration(self):
         # Көркем еңбек сессиясын тек сол пәннің тобындағы студент көреді
-        self.student.profile.group = StudyGroup.objects.create(name="КЕ-21", subject=self.art_labor)
+        self.student.profile.group = StudyGroup.objects.create(name="КЕ-21", subject=self.art_labor, language="kk")
         self.student.profile.save()
         response = self.client.get(reverse("quiz:session_start", args=[self.art_session.pk]))
         self.assertContains(response, "80 минут")
@@ -2684,7 +2700,7 @@ class SubjectTeacherTestCase(TestCase):
         context = Context.objects.create(
             subject=subject, language="kk", title=f"{subject.code} контексті", text="Мәтін"
         )
-        group = StudyGroup.objects.create(name=group_name, subject=subject)
+        group = StudyGroup.objects.create(name=group_name, subject=subject, language="kk")
         session = make_session(title=f"{subject.code} сессиясы", subject=subject)
         student = User.objects.create_user(username=f"{subject.code}-student", password="pass12345")
         student.profile.group = group
@@ -3021,9 +3037,9 @@ class StudentSubjectTestCase(TestCase):
         self.informatics = informatics()
         self.mathematics = Subject.objects.get(code="mathematics")
         self.art_labor = Subject.objects.get(code="art_labor_boys")
-        self.inf_group = StudyGroup.objects.create(name="ИНФ-21", subject=self.informatics)
-        self.math_group = StudyGroup.objects.create(name="МАТ-21", subject=self.mathematics)
-        self.art_group = StudyGroup.objects.create(name="КЕ-21", subject=self.art_labor)
+        self.inf_group = StudyGroup.objects.create(name="ИНФ-21", subject=self.informatics, language="kk")
+        self.math_group = StudyGroup.objects.create(name="МАТ-21", subject=self.mathematics, language="kk")
+        self.art_group = StudyGroup.objects.create(name="КЕ-21", subject=self.art_labor, language="kk")
         self.student = make_student(group=self.math_group)
         self.client.force_login(self.student)
 
@@ -3774,3 +3790,31 @@ class AjaxPracticeTests(VariantTestCase):
         response = self.ajax_answer(1, answer_id)
         self.assertEqual(response.json(), {"redirect": reverse("quiz:practice_start")})
         self.assertNotIn("practice", self.client.session)
+
+
+class GroupLanguageTests(StudentSubjectTestCase):
+    """Тест тілі — топтың оқыту тілі: топ құрғанда көрсетіледі, студент таңдамайды."""
+
+    def test_register_shows_group_language(self):
+        self.client.logout()
+        self.math_group.language = "ru"
+        self.math_group.save()
+        response = self.client.get(reverse("accounts:register"))
+        self.assertContains(response, "МАТ-21 — Математика (Орысша)")
+        self.assertContains(response, "ИНФ-21 — Информатика (Қазақша)")
+
+    def test_dashboard_shows_test_language(self):
+        response = self.client.get(reverse("quiz:dashboard"))
+        self.assertContains(response, "Тест тілі: Қазақша")
+
+    def test_practice_defaults_to_group_language(self):
+        self.math_group.language = "ru"
+        self.math_group.save()
+        response = self.client.get(reverse("quiz:practice_start"))
+        self.assertEqual(response.context["form"].initial["language"], "ru")
+
+    def test_student_language_service(self):
+        self.assertEqual(student_language(self.student), "kk")
+        self.student.profile.group = None
+        self.student.profile.save()
+        self.assertIsNone(student_language(self.student))

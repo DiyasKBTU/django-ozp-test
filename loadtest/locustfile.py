@@ -16,7 +16,7 @@
     LOADTEST_SESSION_ID  — тест сессиясының id-і (міндетті)
     LOADTEST_ACCOUNTS    — аккаунт саны: student001 ... (әдепкі: 100)
     LOADTEST_PASSWORD    — аккаунттардың құпия сөзі (әдепкі: loadtest_data-дағыдай)
-    LOADTEST_LANGUAGE    — тест тілі kk / ru (әдепкі: kk)
+    LOADTEST_LANGUAGE    — ескірген: тест тілін енді топ анықтайды (`loadtest_data --language`)
     LOADTEST_MIN_WAIT, LOADTEST_MAX_WAIT — жауаптар арасындағы кідіріс, секунд (5 және 20)
 
 Маңызды: аккаунттар бір Locust процесінде ретімен беріледі, сондықтан

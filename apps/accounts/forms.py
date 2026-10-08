@@ -19,7 +19,7 @@ class RegisterForm(UserCreationForm):
 
     first_name = forms.CharField(label=_("Аты"), max_length=150)
     last_name = forms.CharField(label=_("Тегі"), max_length=150)
-    # Топтар белсенді пәндер бойынша топталып көрсетіледі: «МАТ-21 — Математика»
+    # Топтар белсенді пәндер бойынша топталып көрсетіледі: «МАТ-21 — Математика (Қазақша)»
     group = forms.ModelChoiceField(
         label=_("Тобы"),
         queryset=StudyGroup.objects.filter(subject__is_active=True)
@@ -61,14 +61,15 @@ class RegisterForm(UserCreationForm):
 
     def group_choices(self):
         """
-        <optgroup> бойынша топталған тізім: [("", бос жол), (пән, [(id, «топ — пән»), ...]), ...].
+        <optgroup> бойынша топталған тізім: [("", бос жол), (пән, [(id, «топ — пән (тіл)»), ...]), ...].
+        Тіл көрсетіледі: топтың тесттері сол тілде өтеді.
         Тексеру бұрынғыдай queryset арқылы өтеді.
         """
         field = self.fields["group"]
         choices = [("", field.empty_label)]
         by_subject = {}
         for group in field.queryset:
-            label = f"{group.name} — {group.subject.name}"
+            label = f"{group.name} — {group.subject.name} ({group.get_language_display()})"
             by_subject.setdefault(group.subject.name, []).append((group.pk, label))
         choices.extend(by_subject.items())
         return choices

@@ -9,7 +9,7 @@
         <h1 class="h4 mb-1">{% translate "Жеке кабинет" %}</h1>
         {% if subject %}
             <div class="text-muted">
-                {% blocktranslate with subject_name=subject.name group=user.profile.group %}Пән: {{ subject_name }} · Топ: {{ group }}{% endblocktranslate %}
+                {% blocktranslate with subject_name=subject.name group=user.profile.group language=user.profile.group.get_language_display %}Пән: {{ subject_name }} · Топ: {{ group }} · Тест тілі: {{ language }}{% endblocktranslate %}
             </div>
         {% endif %}
     </div>

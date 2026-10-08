@@ -60,6 +60,14 @@ def student_subject(user):
     return profile.group.subject
 
 
+def student_language(user):
+    """Студенттің тест тілі — тобының оқыту тілі (тобы жоқ болса — None)."""
+    profile = getattr(user, "profile", None)
+    if profile is None or profile.group is None:
+        return None
+    return profile.group.language
+
+
 def teacher_subjects(user):
     """
     Оқытушыға ашық белсенді пәндер: әкімшіге (is_superuser) — барлығы,
