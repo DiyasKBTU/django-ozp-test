@@ -6,7 +6,7 @@
 {% block content %}
 {# Барлық сұрақ бір бетте, тек ағымдағысы көрінеді: static/js/attempt.js бетті қайта жүктемей #}
 {# ауыстырады және жауапты AJAX арқылы сақтайды. JS жоқ болса — сілтемелер мен формалар бұрынғыдай. #}
-<div id="attempt-page" data-current="{{ number }}" data-total="{{ total }}"
+<div id="question-page" data-current="{{ number }}" data-total="{{ total }}"
      data-network-error="{% translate 'Байланыс үзілді: жауап сақталмады. Нұсқаны қайта таңдаңыз.' %}">
 
 <div class="d-flex flex-wrap align-items-center gap-3 mb-3">
@@ -80,5 +80,6 @@
 
 {% block scripts %}
 <script src="{% static 'js/timer.js' %}"></script>
+<script src="{% static 'js/question_pages.js' %}"></script>
 <script src="{% static 'js/attempt.js' %}"></script>
 {% endblock %}

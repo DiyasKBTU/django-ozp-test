@@ -2138,6 +2138,13 @@ class PracticeTests(VariantTestCase):
     def item_question(self, number):
         return Question.objects.get(pk=self.practice()["items"][number - 1]["question"])
 
+    def section(self, response, number):
+        """Беттегі n-сұрақтың блогы (<section id="question-n">) HTML мәтіні."""
+        content = response.content.decode()
+        start = content.index(f'id="question-{number}"')
+        end = content.find("<section", start)
+        return content[start : end if end != -1 else len(content)]
+
     def test_start_page(self):
         response = self.client.get(reverse("quiz:practice_start"))
         self.assertContains(response, f"{PRACTICE_QUESTIONS} сұрақ")
@@ -2181,10 +2188,16 @@ class PracticeTests(VariantTestCase):
     def test_correct_answer_hidden_until_answered(self):
         self.start()
         response = self.client.get(self.question_url(1))
-        self.assertContains(response, 'name="answer"', count=4)
+        questions = response.context["questions"]
+        self.assertContains(response, 'name="answer"', count=4 * len(questions))
         self.assertNotContains(response, "list-group-item-success")
-        for answer in response.context["answers"]:
-            self.assertIsNone(answer["is_correct"])
+        for row in questions:
+            for answer in row["answers"]:
+                self.assertIsNone(answer["is_correct"])
+        # «дұрыс» белгісі әр нұсқада бар, бірақ бәрі жасырын
+        block = self.section(response, 1)
+        self.assertEqual(block.count("badge-correct d-none"), 4)
+        self.assertIn("feedback-correct d-none", block)
 
     def test_correct_answer_feedback(self):
         self.start()
@@ -2192,10 +2205,13 @@ class PracticeTests(VariantTestCase):
         response = self.client.post(self.question_url(1), {"answer": correct.pk})
         self.assertRedirects(response, self.question_url(1))
         response = self.client.get(self.question_url(1))
-        self.assertContains(response, "Дұрыс!")
-        self.assertContains(response, "list-group-item-success", count=1)
+        block = self.section(response, 1)
+        self.assertIn('alert alert-success mb-0 feedback-correct"', block)
+        self.assertIn("feedback-wrong d-none", block)
+        self.assertEqual(block.count("list-group-item-success"), 1)
         self.assertNotContains(response, "list-group-item-danger")
-        self.assertNotContains(response, 'name="answer"')
+        # Жауап берілген сұрақта таңдау өшірулі
+        self.assertEqual(block.count(" disabled>"), 4)
         self.assertEqual(response.context["navigation"][0]["state"], "correct")
 
     def test_wrong_answer_feedback_and_cannot_change(self):
@@ -2209,7 +2225,8 @@ class PracticeTests(VariantTestCase):
         self.assertEqual(self.practice()["items"][1]["selected"], wrong.pk)
 
         response = self.client.get(self.question_url(2))
-        self.assertContains(response, "Қате.")
+        block = self.section(response, 2)
+        self.assertIn('alert alert-danger mb-0 feedback-wrong"', block)
         self.assertContains(response, "list-group-item-success", count=1)
         self.assertContains(response, "list-group-item-danger", count=1)
         self.assertEqual(response.context["navigation"][1]["state"], "wrong")
@@ -3679,3 +3696,81 @@ class LogoutDuringAttemptTests(TakeTestCase):
 
     def test_logout_requires_post(self):
         self.assertEqual(self.client.get(reverse("accounts:logout")).status_code, 405)
+
+
+class AjaxPracticeTests(VariantTestCase):
+    """Жаттығу беті бетті қайта жүктемей: бір бетте барлық сұрақ, жауап — JSON."""
+
+    AJAX = {"HTTP_X_REQUESTED_WITH": "XMLHttpRequest"}
+
+    def setUp(self):
+        self.student = make_student()
+        self.client.force_login(self.student)
+        self.client.post(
+            reverse("quiz:practice_start"),
+            {"topic": Topic.objects.get(number=8).pk, "language": "kk"},
+        )
+
+    def question(self, number):
+        item = self.client.session["practice"]["items"][number - 1]
+        return Question.objects.get(pk=item["question"])
+
+    def ajax_answer(self, number, answer_id):
+        return self.client.post(
+            reverse("quiz:practice_question", args=[number]), {"answer": answer_id}, **self.AJAX
+        )
+
+    def test_page_holds_all_questions_one_visible(self):
+        response = self.client.get(reverse("quiz:practice_question", args=[3]))
+        content = response.content.decode()
+        self.assertEqual(content.count('class="question-block'), PRACTICE_QUESTIONS)
+        self.assertEqual(content.count('class="question-block"'), 1)
+        self.assertIn('id="question-3" class="question-block"', content)
+        self.assertContains(response, "js/question_pages.js")
+        self.assertContains(response, "js/practice.js")
+
+    def test_correct_answer_feedback_json(self):
+        correct = self.question(1).answers.get(is_correct=True)
+        response = self.ajax_answer(1, correct.pk)
+        self.assertEqual(
+            response.json(),
+            {"selected_id": correct.pk, "correct_id": correct.pk, "is_correct": True},
+        )
+        self.assertEqual(self.client.session["practice"]["items"][0]["selected"], correct.pk)
+
+    def test_wrong_answer_feedback_json_and_cannot_change(self):
+        question = self.question(2)
+        wrong = question.answers.filter(is_correct=False).first()
+        correct = question.answers.get(is_correct=True)
+        response = self.ajax_answer(2, wrong.pk)
+        self.assertEqual(
+            response.json(),
+            {"selected_id": wrong.pk, "correct_id": correct.pk, "is_correct": False},
+        )
+        # Екінші жауап қабылданбайды — бұрынғы нәтиже қайтады
+        response = self.ajax_answer(2, correct.pk)
+        self.assertEqual(response.json()["selected_id"], wrong.pk)
+        self.assertFalse(response.json()["is_correct"])
+
+    def test_ajax_invalid_answer(self):
+        other = self.question(2).answers.first()
+        response = self.ajax_answer(1, other.pk)
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("error", response.json())
+        self.assertIsNone(self.client.session["practice"]["items"][0]["selected"])
+
+    def test_ajax_without_practice_redirects_to_start(self):
+        session = self.client.session
+        del session["practice"]
+        session.save()
+        response = self.ajax_answer(1, 1)
+        self.assertEqual(response.json(), {"redirect": reverse("quiz:practice_start")})
+
+    def test_ajax_deleted_answers_restart_practice(self):
+        question = self.question(1)
+        answer_id = question.answers.first().pk
+        # Жаттығу кезінде сұрақтың жауап нұсқалары банктен өшірілді
+        question.answers.all().delete()
+        response = self.ajax_answer(1, answer_id)
+        self.assertEqual(response.json(), {"redirect": reverse("quiz:practice_start")})
+        self.assertNotIn("practice", self.client.session)

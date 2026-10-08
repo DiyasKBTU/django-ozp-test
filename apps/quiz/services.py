@@ -1056,49 +1056,83 @@ def practice_answer(practice, number, answer_id):
     return True
 
 
-def practice_question_data(practice, number):
+def practice_page_data(practice):
     """
-    Жаттығудың n-сұрақ беті: сұрақ, нұсқалар (жауап берілген соң — дұрысы
-    белгіленеді), навигация. Сұрақ банктен өшіріліп кетсе — None.
+    Жаттығу беті — барлық сұрақ бір бетте (біреуі ғана көрінеді, static/js/practice.js
+    бетті қайта жүктемей ауыстырады). Әр сұрақтың нұсқалары араласқан ретімен;
+    дұрыс жауап тек студент жауап берген сұрақта шаблонға жетеді.
+    Сұрақтың бірі банктен өшіріліп кетсе — None (жаттығуды қайта бастау керек).
     """
-    item = practice["items"][number - 1]
-    question = (
-        Question.objects.select_related("context", "subtopic__topic__subject")
-        .filter(pk=item["question"])
-        .first()
-    )
-    if question is None:
+    items = practice["items"]
+    question_ids = [item["question"] for item in items]
+    questions_by_id = Question.objects.select_related(
+        "context", "subtopic__topic__subject"
+    ).in_bulk(question_ids)
+    if len(questions_by_id) != len(set(question_ids)):
         return None
-    answers_by_id = Answer.objects.in_bulk(item["answer_order"])
-    answered = item["selected"] is not None
+    answer_ids = [answer_id for item in items for answer_id in item["answer_order"]]
+    answers_by_id = Answer.objects.in_bulk(answer_ids)
+    total = len(items)
 
-    answers = []
-    for row in ordered_answers(item["answer_order"], answers_by_id):
-        answer = row["answer"]
-        answers.append(
+    questions = []
+    for number, item in enumerate(items, start=1):
+        answered = item["selected"] is not None
+        answers = []
+        for row in ordered_answers(item["answer_order"], answers_by_id):
+            answer = row["answer"]
+            answers.append(
+                {
+                    "letter": row["letter"],
+                    "id": answer.pk,
+                    "text": answer.text,
+                    "image": answer.image,
+                    # Дұрыс жауап тек студент жауап бергеннен кейін шаблонға жетеді
+                    "is_correct": answer.is_correct if answered else None,
+                    "is_selected": answer.pk == item["selected"],
+                }
+            )
+        questions.append(
             {
-                "letter": row["letter"],
-                "id": answer.pk,
-                "text": answer.text,
-                "image": answer.image,
-                # Дұрыс жауап тек студент жауап бергеннен кейін шаблонға жетеді
-                "is_correct": answer.is_correct if answered else None,
-                "is_selected": answer.pk == item["selected"],
+                "number": number,
+                "question": questions_by_id[item["question"]],
+                "answers": answers,
+                "answered": answered,
+                "is_correct": answered
+                and any(a["is_selected"] and a["is_correct"] for a in answers),
+                "previous_number": number - 1 if number > 1 else None,
+                "next_number": number + 1 if number < total else None,
             }
         )
 
-    total = len(practice["items"])
+    first_question = questions[0]["question"] if questions else None
     return {
-        "question": question,
-        "number": number,
+        "questions": questions,
         "total": total,
-        "answers": answers,
-        "answered": answered,
-        "is_correct": answered and any(a["is_selected"] and a["is_correct"] for a in answers),
         "navigation": practice_navigation(practice),
-        "uses_formulas": question.subtopic.topic.subject.uses_formulas,
-        "previous_number": number - 1 if number > 1 else None,
-        "next_number": number + 1 if number < total else None,
+        "uses_formulas": bool(
+            first_question and first_question.subtopic.topic.subject.uses_formulas
+        ),
+    }
+
+
+def practice_answer_feedback(practice, number):
+    """
+    n-сұраққа жауап берілгеннен кейінгі нәтиже (practice.js үшін JSON):
+    таңдалған жауап, дұрыс жауап және дұрыс па. Сұрақтың жауаптары
+    банктен өшіріліп кетсе — None.
+    """
+    item = practice["items"][number - 1]
+    correct_id = (
+        Answer.objects.filter(pk__in=item["answer_order"], is_correct=True)
+        .values_list("id", flat=True)
+        .first()
+    )
+    if correct_id is None:
+        return None
+    return {
+        "selected_id": item["selected"],
+        "correct_id": correct_id,
+        "is_correct": item["selected"] == correct_id,
     }
 
 

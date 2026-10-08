@@ -24,7 +24,8 @@ from .services import (
     first_unanswered_number,
     is_session_open,
     practice_answer,
-    practice_question_data,
+    practice_answer_feedback,
+    practice_page_data,
     practice_summary,
     remaining_seconds,
     save_answer,
@@ -250,11 +251,27 @@ def practice_start(request):
     return render(request, "quiz/practice_start.html", context)
 
 
+def restart_practice(request):
+    """Жаттығудың сұрағы банктен өшірілген: жаттығу жойылып, бастау бетіне."""
+    del request.session[PRACTICE_SESSION_KEY]
+    messages.warning(request, _("Сұрақ банктен өшірілген. Жаттығуды қайта бастаңыз."))
+    start_url = reverse("quiz:practice_start")
+    if is_ajax(request):
+        return JsonResponse({"redirect": start_url})
+    return redirect(start_url)
+
+
 @login_required
 def practice_question(request, number):
-    """Жаттығудың n-сұрағы: POST — жауап (бір рет), содан кейін дұрыс жауап көрсетіледі."""
+    """
+    Жаттығу беті: GET — барлық сұрақ (n-сұрақ көрінеді), POST — n-сұрақтың жауабы
+    (бір рет), содан кейін дұрыс жауап көрсетіледі. practice.js жауапты AJAX арқылы
+    жібереді — оған JSON (таңдалған және дұрыс жауап) қайтарылады, бет қайта жүктелмейді.
+    """
     practice = request.session.get(PRACTICE_SESSION_KEY)
     if not practice:
+        if is_ajax(request):
+            return JsonResponse({"redirect": reverse("quiz:practice_start")})
         return redirect("quiz:practice_start")
     if not 1 <= number <= len(practice["items"]):
         raise Http404
@@ -262,19 +279,26 @@ def practice_question(request, number):
     if request.method == "POST":
         item = practice["items"][number - 1]
         form = AttemptAnswerForm(item["answer_order"], request.POST)
-        if form.is_valid():
-            practice_answer(practice, number, form.cleaned_data["answer"])
-            # Сессиядағы ішкі сөздік өзгерді — Django-ға сақтау керектігін айтамыз
-            request.session.modified = True
-        else:
-            messages.error(request, _("Жауап нұсқасын таңдаңыз."))
+        if not form.is_valid():
+            error = _("Жауап нұсқасын таңдаңыз.")
+            if is_ajax(request):
+                return JsonResponse({"error": error}, status=400)
+            messages.error(request, error)
+            return redirect("quiz:practice_question", number)
+        practice_answer(practice, number, form.cleaned_data["answer"])
+        # Сессиядағы ішкі сөздік өзгерді — Django-ға сақтау керектігін айтамыз
+        request.session.modified = True
+        if is_ajax(request):
+            feedback = practice_answer_feedback(practice, number)
+            if feedback is None:
+                return restart_practice(request)
+            return JsonResponse(feedback)
         return redirect("quiz:practice_question", number)
 
-    context = practice_question_data(practice, number)
+    context = practice_page_data(practice)
     if context is None:
-        del request.session[PRACTICE_SESSION_KEY]
-        messages.warning(request, _("Сұрақ банктен өшірілген. Жаттығуды қайта бастаңыз."))
-        return redirect("quiz:practice_start")
+        return restart_practice(request)
+    context["number"] = number
     return render(request, "quiz/practice_question.html", context)
 
 

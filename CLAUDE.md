@@ -37,7 +37,7 @@
 ## Код жазу ережелері
 
 - **Views тек функциялар (FBV).** Класқа негізделген views жазба (тек Django-ның дайын `LoginView` / `set_language` қолданылады).
-- **Тест беті AJAX-пен:** бір бетте 50 сұрақ (`services.attempt_page_data`), `static/js/attempt.js` сұрақты бетті жүктемей ауыстырады (URL — `history.pushState`) және жауапты `fetch` арқылы жібереді (`X-Requested-With: XMLHttpRequest` → view JSON қайтарады). JS жоқ болса — бұрынғыдай форма + redirect. Жаңа JS тек progressive enhancement болсын: JS-сіз де жұмыс істеуі керек.
+- **Тест беті мен жаттығу беті AJAX-пен:** барлық сұрақ бір бетте (`services.attempt_page_data` / `practice_page_data`), біреуі көрінеді. Ортақ `static/js/question_pages.js` сұрақты бетті жүктемей ауыстырады (URL — `history.pushState`), жауаптарды кезекпен `fetch` арқылы жібереді (`X-Requested-With: XMLHttpRequest` → view JSON қайтарады, `views.is_ajax`); бетке тәні — `attempt.js` / `practice.js`. Жаттығуда дұрыс жауап тек жауап берілген соң JSON-да келеді (`practice_answer_feedback`). JS жоқ болса — бұрынғыдай форма + redirect. Жаңа JS тек progressive enhancement болсын: JS-сіз де жұмыс істеуі керек.
 - **Бизнес-логика** (нұсқа құру, балл есептеу, банк толуы) — `apps/quiz/services.py`.
 - **Форма тексерулері** — `apps/quiz/forms.py` (accounts үшін `apps/accounts/forms.py`). Views ішінде логика да, тексеру де болмайды.
 - Оқытушы беттері — `apps/quiz/teacher_views.py`, `@staff_member_required` + `@subject_required` (view `request, subject, ...` алады); **барлық сұраныс таңдалған пән бойынша сүзіледі**, басқа пәннің объектісі — 404 (`get_object_or_404(subject_questions(subject), pk=pk)`). Формаларға `subject=` беріледі. Студент беттері — `@login_required`.
