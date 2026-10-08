@@ -9,7 +9,7 @@
 
 Іске қосу (толығы — README, «Жүктеме тесті»):
     LOADTEST_SESSION_ID=5 LOADTEST_ACCOUNTS=1000 \\
-        locust -f loadtest/locustfile.py --host https://test.example.kz \\
+        locust -f loadtest/locustfile.py --host https://pbbtest.oaiu.kz \\
         --headless -u 1000 -r 10
 
 Баптаулар (орта айнымалылары):

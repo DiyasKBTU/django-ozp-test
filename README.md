@@ -130,7 +130,7 @@ python -m venv .venv-loadtest
 $env:LOADTEST_SESSION_ID = "7"
 $env:LOADTEST_ACCOUNTS = "1000"
 # Windows gevent DLL-ін бұғаттаса (DLL load failed): $env:PURE_PYTHON = "1"
-.venv-loadtest\Scripts\locust -f loadtest/locustfile.py --host https://test.example.kz --headless -u 1000 -r 5 --run-time 40m --html loadtest-report.html
+.venv-loadtest\Scripts\locust -f loadtest/locustfile.py --host https://pbbtest.oaiu.kz --headless -u 1000 -r 5 --run-time 40m --html loadtest-report.html
 ```
 
 - `-u 1000` — виртуалды студенттер саны (`LOADTEST_ACCOUNTS`-тан аспауы керек), `-r 5` — секундына қанша студент қосылады. Кіру кезінде құпия сөз тексеру процессорды көп жұмсайды, сондықтан студенттерді біртіндеп қосқан дұрыс.
@@ -148,3 +148,5 @@ sudo -u ozp .venv/bin/python manage.py loadtest_data --delete
 ## Серверге орнату
 
 VPS-ке (Ubuntu 24.04: Nginx + Gunicorn + PostgreSQL + HTTPS) қадамдап орнату, бэкап және жаңарту тәртібі — [deploy/DEPLOY.md](deploy/DEPLOY.md). Баптау файлдары: `deploy/nginx.conf`, `deploy/gunicorn.service`, `deploy/backup.sh`.
+
+Орысша толық нұсқаулық (https://pbbtest.oaiu.kz серверіне орнату, жаңарту, бэкап, ақауларды жою) — [deploy/INSTRUCTION_RU.md](deploy/INSTRUCTION_RU.md).

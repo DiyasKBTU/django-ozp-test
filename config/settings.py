@@ -45,7 +45,7 @@ if not DEBUG:
     # көз жеткізгеннен кейін ғана .env-те қосыңыз (мысалы, 31536000 — бір жыл)
     SECURE_HSTS_SECONDS = int(os.environ.get("SECURE_HSTS_SECONDS", "0"))
 
-# Формалар жіберілетін домендер, мысалы https://test.example.kz (міндетті емес)
+# Формалар жіберілетін домендер, мысалы https://pbbtest.oaiu.kz (міндетті емес)
 CSRF_TRUSTED_ORIGINS = [
     origin.strip()
     for origin in os.environ.get("CSRF_TRUSTED_ORIGINS", "").split(",")
