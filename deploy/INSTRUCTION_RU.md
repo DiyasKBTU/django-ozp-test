@@ -13,7 +13,7 @@
 | Сервис systemd (Gunicorn) | `ozp-test`, 2 воркера, слушает `127.0.0.1:8002` |
 | Бэкапы | `/var/backups/ozp-test` (14 дней) |
 
-Схема: браузер → **Nginx** (HTTPS, статика, картинки) → **Gunicorn** (Django) → **PostgreSQL**.
+Схема: браузер → **Caddy** (Docker rehabgame, HTTPS на 443) → **Nginx** (`:80`, статика, картинки) → **Gunicorn** (`:8002`, Django) → **PostgreSQL**. На сервере без чужого 443 вместо Caddy HTTPS выдаёт сам Nginx (certbot).
 
 > **Главное правило для этого сервера:** на нём уже работает бот. Ничего чужого не удаляем и не перезапускаем: **не** трогайте конфиг `django-telegrambot-university`, порт 8001 и базу бота, **не** меняйте часовой пояс сервера, **не** включайте `ufw` (сейчас inactive — можно потерять SSH). Все команды ниже добавляют только своё.
 
@@ -148,11 +148,57 @@ Gunicorn: 2 воркера на `127.0.0.1:8002` (≈ 70 МБ каждый; вм
 
 ```bash
 curl -s "https://dns.google/resolve?name=pbbtest.oaiu.kz&type=A" | grep -o '"data":"[^"]*"'   # должен быть IP из шага 0
+ss -ltnp | grep ':443 ' || echo "443 свободен"                                                 # кто держит HTTPS-порт
+```
+
+- 443 свободен или там `nginx` → **вариант А** (certbot).
+- 443 держит `docker-proxy` (на `cloud-001` это Caddy проекта rehabgame) → **вариант Б**. certbot тогда не нужен: nginx не сможет открыть 443 (`bind() to 0.0.0.0:443 failed`), а при перезапуске не запустится совсем — вместе с сайтом бота.
+
+#### Вариант А: nginx + certbot
+
+```bash
 certbot --nginx -d pbbtest.oaiu.kz      # email, согласие (Y); certbot меняет только наш server-блок
 certbot renew --dry-run                 # автопродление работает
 ```
 
-Откройте https://pbbtest.oaiu.kz — должна открыться главная с замком. Затем включите HSTS:
+#### Вариант Б: 443 у Caddy (Docker) — Caddy выдаёт HTTPS и передаёт запросы нашему nginx
+
+Схема: браузер → Caddy (`:443`, сертификат Let's Encrypt получает сам) → nginx (`:80` на хосте: статика, картинки) → Gunicorn → Django. Наш `deploy/nginx.conf` доверяет заголовку `X-Forwarded-Proto` только из Docker-сети, поэтому Django видит HTTPS, а подделать заголовок из интернета нельзя. Схема проверена: Caddy 2 + nginx 1.24 + Django (`DEBUG=False`) — главная 200 без петли редиректов, HSTS, вход в админку с CSRF.
+
+```bash
+# 1. Где лежит Caddyfile и адрес хоста внутри Docker-сети Caddy
+CADDYFILE=$(docker inspect rehabgame-caddy --format '{{range .Mounts}}{{if eq .Destination "/etc/caddy/Caddyfile"}}{{.Source}}{{end}}{{if eq .Destination "/etc/caddy"}}{{.Source}}/Caddyfile{{end}}{{end}}')
+GW=$(docker inspect rehabgame-caddy --format '{{range .NetworkSettings.Networks}}{{.Gateway}} {{end}}' | awk '{print $1}')
+echo "Caddyfile: $CADDYFILE   хост: $GW"
+ls -l "$CADDYFILE"                                   # файл должен существовать
+
+# 2. Caddy видит наш nginx? Ожидается «HTTP/1.1 301 Moved Permanently»
+docker exec rehabgame-caddy wget -S -T 5 -O /dev/null --header "Host: pbbtest.oaiu.kz" "http://$GW/" 2>&1 | grep -m1 "HTTP/"
+
+# 3. Копия Caddyfile и наш сайт в конец файла (сайты rehabgame не меняются)
+cp "$CADDYFILE" "$CADDYFILE.bak-$(date +%F)"
+cat >> "$CADDYFILE" <<EOF
+
+# ПББ тест платформасы: Django на этом же сервере (nginx :80 → Gunicorn :8002)
+pbbtest.oaiu.kz {
+	reverse_proxy $GW:80
+}
+EOF
+
+# 4. Проверить и применить без остановки (при ошибке Caddy работает со старым конфигом)
+docker exec rehabgame-caddy caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+docker exec rehabgame-caddy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile
+
+# 5. Сертификат (обычно 10–60 секунд)
+sleep 30; docker logs --since 5m rehabgame-caddy 2>&1 | grep -i "pbbtest" | tail -5
+curl -sI https://pbbtest.oaiu.kz/ | head -1          # HTTP/1.1 200 OK (или HTTP/2 200)
+```
+
+- `validate` с ошибкой → не делайте `reload`; верните копию: `cp "$CADDYFILE.bak-$(date +%F)" "$CADDYFILE"`.
+- `reload` пишет `connection refused` (в Caddyfile `admin off`) → примените перезапуском: `docker restart rehabgame-caddy` (сайты rehabgame недоступны 2–3 секунды).
+- Если сертификат выпускал certbot, а потом выбран вариант Б — уберите его, чтобы таймер продления не падал: `certbot delete --cert-name pbbtest.oaiu.kz`.
+
+Откройте https://pbbtest.oaiu.kz — должна открыться главная с замком. Затем включите HSTS (оба варианта):
 
 ```bash
 cd /srv/ozp-test
@@ -272,7 +318,7 @@ sudo systemctl restart ozp-test
 sudo systemctl is-active ozp-test && curl -sI https://pbbtest.oaiu.kz/ | head -1
 ```
 
-Если менялся `apps/quiz/data/subjects.json` — ещё `sudo -u ozp .venv/bin/python manage.py load_subjects`. Если менялись `deploy/nginx.conf` или `deploy/gunicorn.service`, скопируйте их заново (шаг 6). **Внимание:** certbot дописал HTTPS в установленный nginx-конфиг, поэтому после копирования nginx-конфига снова выполните `sudo certbot --nginx -d pbbtest.oaiu.kz` (на вопрос certbot выберите «Attempt to reinstall this existing certificate»).
+Если менялся `apps/quiz/data/subjects.json` — ещё `sudo -u ozp .venv/bin/python manage.py load_subjects`. Если менялись `deploy/nginx.conf` или `deploy/gunicorn.service`, скопируйте их заново (шаг 6). При варианте А (certbot) после копирования nginx-конфига снова выполните `sudo certbot --nginx -d pbbtest.oaiu.kz --reinstall --redirect`: certbot дописывал HTTPS в установленный конфиг. При варианте Б (Caddy) ничего дополнительно делать не нужно.
 
 ---
 
@@ -365,6 +411,7 @@ sudo tail -n 50 /var/log/nginx/error.log         # Nginx
 | **400 Bad Request** | Домен не в `ALLOWED_HOSTS` в `.env`. |
 | **403 «CSRF verification failed»** | `CSRF_TRUSTED_ORIGINS=https://pbbtest.oaiu.kz` в `.env`. Открывайте сайт по https. |
 | Открылся другой сайт (бот) / ошибка сертификата | Нет сертификата для pbbtest — выполните шаг 7 (и проверьте DNS, шаг 0). Проверка: `sudo nginx -T \| grep -n "server_name"`. |
+| `tls: internal error`, в `/var/log/nginx/error.log` — `bind() to 0.0.0.0:443 failed` | 443 занят другой программой (`ss -ltnp \| grep ':443 '`). Если это Docker/Caddy — шаг 7, вариант Б; строки certbot из `/etc/nginx/sites-available/ozp-test` уберите: `cp /srv/ozp-test/deploy/nginx.conf /etc/nginx/sites-available/ozp-test && nginx -t && systemctl reload nginx`. |
 | **ERR_TOO_MANY_REDIRECTS** | В nginx-конфиге потерялась строка `proxy_set_header X-Forwarded-Proto $scheme;`. |
 | Страница без стилей | `collectstatic` (раздел 4) и `sudo chmod 755 /srv/ozp-test`. |
 | **413** при загрузке картинки | Больше `client_max_body_size 12M` в nginx-конфиге. Картинки — до 2 МБ каждая. |
