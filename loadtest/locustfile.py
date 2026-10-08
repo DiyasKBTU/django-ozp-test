@@ -57,6 +57,27 @@ ATTEMPT_URL_RE = re.compile(r"/test/(\d+)/")
 ANSWER_RE = re.compile(r'name="answer" value="(\d+)"')
 
 
+def question_answer_ids(page_html, path):
+    """Бір сұрақтың жауап нұсқалары: бетте 50 форма бар, тек action=path формасынан аламыз."""
+    match = re.search(rf'action="{re.escape(path)}"(.*?)</form>', page_html, re.S)
+    if match is None:
+        return []
+    return ANSWER_RE.findall(match.group(1))
+
+
+def final_url(response):
+    """Соңғы мекенжай (байланыс қатесінде requests url бермейді — бос жол)."""
+    return response.url or ""
+
+
+def response_json(response):
+    """AJAX жауабының JSON-ы (сервер қатесінде HTML келсе — бос сөздік)."""
+    try:
+        return response.json()
+    except ValueError:
+        return {}
+
+
 class Student(HttpUser):
     # Кідірісті тапсырманың ішінде өзіміз басқарамыз (жауаптар арасында)
     wait_time = constant(0)
@@ -69,10 +90,15 @@ class Student(HttpUser):
 
     # ---------- Көмекші әдістер ----------
 
-    def post(self, path, data, name):
-        """Django формасын жіберу: CSRF токені cookie-ден, Referer — HTTPS үшін."""
+    def post(self, path, data, name, ajax=False):
+        """
+        Django формасын жіберу: CSRF токені cookie-ден, Referer — HTTPS үшін.
+        ajax=True — attempt.js сияқты (X-Requested-With), view JSON қайтарады.
+        """
         data["csrfmiddlewaretoken"] = self.client.cookies.get("csrftoken", "")
         headers = {"Referer": self.host.rstrip("/") + path}
+        if ajax:
+            headers["X-Requested-With"] = "XMLHttpRequest"
         return self.client.post(
             path, data=data, headers=headers, name=name, catch_response=True
         )
@@ -95,7 +121,7 @@ class Student(HttpUser):
             name="/accounts/login/ [POST]",
         ) as response:
             # Сәтті кіргенде кабинетке бағытталады
-            logged_in = "/dashboard/" in response.url
+            logged_in = "/dashboard/" in final_url(response)
             if not logged_in:
                 response.failure(self.failure_text(response, "кіру сәтсіз"))
         if not logged_in:
@@ -122,26 +148,28 @@ class Student(HttpUser):
         start_path = f"/session/{SESSION_ID}/start/"
         response = self.client.get(start_path, name="/session/[id]/start/")
         # Бастау беті ашылса — тілді таңдап бастаймыз; әйтпесе бұрынғы әрекетке бағытталды
-        if ATTEMPT_URL_RE.search(response.url) is None:
+        if ATTEMPT_URL_RE.search(final_url(response)) is None:
             with self.post(
                 start_path, {"language": LANGUAGE}, name="/session/[id]/start/ [POST]"
             ) as response:
-                if ATTEMPT_URL_RE.search(response.url) is None:
+                if ATTEMPT_URL_RE.search(final_url(response)) is None:
                     response.failure(self.failure_text(response, "тест басталмады"))
-        match = ATTEMPT_URL_RE.search(response.url)
+        match = ATTEMPT_URL_RE.search(final_url(response))
         if match is None:
             self.user_done()
-        if "/result/" in response.url:
+        if "/result/" in final_url(response):
             logger.warning("%s: тест бұрын аяқталған", self.username)
             self.user_done()
         attempt_id = match.group(1)
 
+        # Тест бетінде 50 сұрақтың бәрі бар, attempt.js бетті қайта жүктемейді:
+        # браузер сияқты бетті бір рет аламыз (бастаған соң осы бетке бағытталды),
+        # ал жауаптарды AJAX арқылы жібереміз
+        page_html = response.text
         for number in range(1, QUESTIONS_TOTAL + 1):
             path = f"/test/{attempt_id}/q/{number}/"
-            page = self.client.get(path, name="/test/[id]/q/[n]/")
-            answer_ids = ANSWER_RE.findall(page.text)
+            answer_ids = question_answer_ids(page_html, path)
             if not answer_ids:
-                # Уақыт бітіп, нәтиже бетіне бағытталды
                 logger.warning("%s: %s-сұрақта жауап нұсқасы жоқ", self.username, number)
                 break
 
@@ -149,11 +177,18 @@ class Student(HttpUser):
             gevent.sleep(random.uniform(MIN_WAIT, MAX_WAIT))
 
             with self.post(
-                path, {"answer": random.choice(answer_ids)}, name="/test/[id]/q/[n]/ [POST]"
+                path,
+                {"answer": random.choice(answer_ids)},
+                name="/test/[id]/q/[n]/ [POST]",
+                ajax=True,
             ) as answer:
-                expired = "/result/" in answer.url
+                data = response_json(answer)
+                # Мерзім өтсе, view нәтиже бетінің мекенжайын қайтарады
+                expired = "redirect" in data
                 if expired:
                     answer.failure(self.failure_text(answer, "жауап қабылданбады, мерзім өтті"))
+                elif not data.get("saved"):
+                    answer.failure(self.failure_text(answer, "жауап сақталмады"))
             if expired:
                 break
 
@@ -161,6 +196,6 @@ class Student(HttpUser):
         with self.post(
             f"/test/{attempt_id}/finish/", {}, name="/test/[id]/finish/ [POST]"
         ) as response:
-            if "/result/" not in response.url:
+            if "/result/" not in final_url(response):
                 response.failure(self.failure_text(response, "тест аяқталмады"))
         self.user_done()
