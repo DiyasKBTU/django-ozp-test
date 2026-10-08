@@ -47,11 +47,12 @@
 
 ```bash
 curl -4 -s ifconfig.me; echo                      # IP этого сервера
-getent hosts pbbtest.oaiu.kz                      # куда сейчас указывает поддомен
+curl -s "https://dns.google/resolve?name=pbbtest.oaiu.kz&type=A" | grep -o '"data":"[^"]*"'   # куда указывает поддомен (без кеша сервера)
 ss -ltnp | grep ':8002 ' || echo "8002 свободен"
 grep -rn "pbbtest" /etc/nginx/ || echo "pbbtest в nginx не занят"
 ```
 
+- `getent hosts` / `ping` на сервере могут ещё до часа показывать старый IP из кеша (TTL 3600) — смотрите проверку через Google DNS выше; certbot кеш сервера не использует.
 - **Если IP сервера ≠ IP поддомена** — попросите того, кто управляет DNS `oaiu.kz`, сделать A-запись `pbbtest.oaiu.kz → IP сервера`. Шаги 1–6 можно делать сразу, шаг 7 (HTTPS) — после смены DNS.
 - **Если 8002 занят** — после шага 6 замените порт в `/etc/systemd/system/ozp-test.service` и `/etc/nginx/sites-available/ozp-test` (например, на 8003), затем `systemctl daemon-reload && systemctl restart ozp-test && systemctl reload nginx`.
 
@@ -146,7 +147,7 @@ Gunicorn: 2 воркера на `127.0.0.1:8002` (≈ 70 МБ каждый; вм
 ### Шаг 7. HTTPS (когда поддомен указывает на этот сервер)
 
 ```bash
-getent hosts pbbtest.oaiu.kz            # должен показать IP из шага 0
+curl -s "https://dns.google/resolve?name=pbbtest.oaiu.kz&type=A" | grep -o '"data":"[^"]*"'   # должен быть IP из шага 0
 certbot --nginx -d pbbtest.oaiu.kz      # email, согласие (Y); certbot меняет только наш server-блок
 certbot renew --dry-run                 # автопродление работает
 ```
