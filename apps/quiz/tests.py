@@ -3516,3 +3516,49 @@ class FormulaScriptTests(TestCase):
         for delimiter in [r'"\\("', r'"\\)"', r'"\\["', r'"\\]"']:
             self.assertIn(delimiter, script)
         self.assertNotIn(r'"\("', script)
+
+
+class DashboardCarouselTests(StudentTestCase):
+    """Кабинет: әр тізімде слайдқа 2 сессиядан, ашық сессиялардың тапсырылмағаны бірінші."""
+
+    def test_sessions_are_split_into_slides_of_two(self):
+        for index in range(5):
+            self.session_for(self.group, title=f"Ашық {index}")
+        lists = dashboard_sessions(self.student)
+        self.assertEqual([len(slide) for slide in lists["open_slides"]], [2, 2, 1])
+        self.assertEqual(lists["upcoming_slides"], [])
+
+        response = self.client.get(reverse("quiz:dashboard"))
+        # Барлық сессия бетте бар (басқа слайдтарда), ауыстырғыш шығады
+        for index in range(5):
+            self.assertContains(response, f"Ашық {index}")
+        self.assertContains(response, 'data-bs-target="#open-sessions" data-bs-slide="next"')
+        self.assertContains(response, 'data-bs-slide-to="2"')
+
+    def test_no_controls_for_two_sessions(self):
+        self.session_for(self.group, title="Бірінші")
+        self.session_for(self.group, title="Екінші")
+        response = self.client.get(reverse("quiz:dashboard"))
+        self.assertContains(response, "Екінші")
+        self.assertNotContains(response, "data-bs-slide=")
+
+    def test_empty_list_text(self):
+        response = self.client.get(reverse("quiz:dashboard"))
+        self.assertContains(response, "Қазір ашық сессия жоқ.")
+        self.assertNotContains(response, 'class="carousel slide')
+
+    def test_unfinished_open_sessions_come_first(self):
+        done_1 = self.session_for(self.group, title="Тапсырылған 1")
+        done_2 = self.session_for(self.group, title="Тапсырылған 2")
+        todo = self.session_for(self.group, title="Тапсыру керек")
+        for session in [done_1, done_2]:
+            Attempt.objects.create(
+                user=self.student,
+                session=session,
+                language="kk",
+                deadline=session.closes_at,
+                status=Attempt.Status.FINISHED,
+                score=10,
+            )
+        first_slide = dashboard_sessions(self.student)["open_slides"][0]
+        self.assertEqual(first_slide[0]["session"], todo)

@@ -269,9 +269,19 @@ def split_duration(duration):
     return {"days": days, "hours": hours, "minutes": minutes}
 
 
+# Кабинетте әр тізімнің бір слайдында (карусель) көрсетілетін сессия саны
+SESSIONS_PER_SLIDE = 2
+
+
+def chunked(items, size):
+    """Тізімді size-тан бөледі: [1, 2, 3] → [[1, 2], [3]] (карусель слайдтары)."""
+    return [items[index : index + size] for index in range(0, len(items), size)]
+
+
 def dashboard_sessions(user, now=None):
     """
-    Кабинеттегі үш тізім: алдағы, ашық және өткен сессиялар.
+    Кабинеттегі үш тізім: алдағы, ашық және өткен сессиялар, және олардың
+    карусель слайдтары (әр слайдта SESSIONS_PER_SLIDE сессия).
 
     Шекаралар: opens_at <= уақыт < closes_at — ашық, яғни opens_at сәтінде
     сессия ашылады, closes_at сәтінде жабылады. Әр жолда студенттің осы
@@ -292,9 +302,21 @@ def dashboard_sessions(user, now=None):
         else:
             past.append(row)
 
+    # Ашық сессиялар: әлі тапсырылмағандары бірінші — «Бастау» бірінші слайдта тұрсын
+    open_now.sort(
+        key=lambda row: bool(row["attempt"])
+        and row["attempt"].status == Attempt.Status.FINISHED
+    )
     # Өткен сессиялар — ең соңғысы бірінші
     past.reverse()
-    return {"upcoming": upcoming, "open": open_now, "past": past}
+    return {
+        "upcoming": upcoming,
+        "open": open_now,
+        "past": past,
+        "upcoming_slides": chunked(upcoming, SESSIONS_PER_SLIDE),
+        "open_slides": chunked(open_now, SESSIONS_PER_SLIDE),
+        "past_slides": chunked(past, SESSIONS_PER_SLIDE),
+    }
 
 
 def is_session_open(session, now=None):

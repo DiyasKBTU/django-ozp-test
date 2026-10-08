@@ -27,27 +27,8 @@
     <div class="col-lg-4">
         <div class="card h-100 border-success">
             <div class="card-header bg-success text-white">{% translate "Ашық сессиялар" %}</div>
-            <ul class="list-group list-group-flush">
-                {% for row in open %}
-                    <li class="list-group-item">
-                        <div class="fw-semibold">{{ row.session.title }}</div>
-                        <div class="small text-muted mb-2">
-                            {% blocktranslate with closes=row.session.closes_at|date:"d.m.Y, H:i" %}Жабылады: {{ closes }}{% endblocktranslate %}
-                            · {% blocktranslate with minutes=row.session.subject.duration_minutes %}{{ minutes }} минут{% endblocktranslate %}
-                        </div>
-                        {% if row.attempt.status == "finished" %}
-                            <span class="badge text-bg-secondary">{% translate "Тапсырылды" %}</span>
-                            <a class="btn btn-sm btn-outline-primary ms-1" href="{% url 'quiz:attempt_result' row.attempt.pk %}">{% translate "Нәтиже" %}</a>
-                        {% elif row.attempt %}
-                            <a class="btn btn-sm btn-warning" href="{% url 'quiz:session_start' row.session.pk %}">{% translate "Жалғастыру" %}</a>
-                        {% else %}
-                            <a class="btn btn-sm btn-success" href="{% url 'quiz:session_start' row.session.pk %}">{% translate "Бастау" %}</a>
-                        {% endif %}
-                    </li>
-                {% empty %}
-                    <li class="list-group-item text-muted">{% translate "Қазір ашық сессия жоқ." %}</li>
-                {% endfor %}
-            </ul>
+            {% translate "Қазір ашық сессия жоқ." as empty_text %}
+            {% include "quiz/_session_carousel.html" with carousel_id="open-sessions" slides=open_slides item_template="quiz/_session_open_item.html" empty_text=empty_text %}
         </div>
     </div>
 
@@ -55,28 +36,8 @@
     <div class="col-lg-4">
         <div class="card h-100">
             <div class="card-header">{% translate "Алдағы сессиялар" %}</div>
-            <ul class="list-group list-group-flush">
-                {% for row in upcoming %}
-                    <li class="list-group-item">
-                        <div class="fw-semibold">{{ row.session.title }}</div>
-                        <div class="small text-muted">
-                            {{ row.session.opens_at|date:"d.m.Y, H:i" }} – {{ row.session.closes_at|date:"d.m.Y, H:i" }}
-                            · {% blocktranslate with minutes=row.session.subject.duration_minutes %}{{ minutes }} минут{% endblocktranslate %}
-                        </div>
-                        <div class="small">
-                            {% with days=row.opens_in.days hours=row.opens_in.hours minutes=row.opens_in.minutes %}
-                                {% if days %}
-                                    {% blocktranslate %}Ашылуына қалды: {{ days }} күн {{ hours }} сағ.{% endblocktranslate %}
-                                {% else %}
-                                    {% blocktranslate %}Ашылуына қалды: {{ hours }} сағ. {{ minutes }} мин.{% endblocktranslate %}
-                                {% endif %}
-                            {% endwith %}
-                        </div>
-                    </li>
-                {% empty %}
-                    <li class="list-group-item text-muted">{% translate "Алдағы сессия жоқ." %}</li>
-                {% endfor %}
-            </ul>
+            {% translate "Алдағы сессия жоқ." as empty_text %}
+            {% include "quiz/_session_carousel.html" with carousel_id="upcoming-sessions" slides=upcoming_slides item_template="quiz/_session_upcoming_item.html" empty_text=empty_text %}
         </div>
     </div>
 
@@ -84,23 +45,8 @@
     <div class="col-lg-4">
         <div class="card h-100">
             <div class="card-header">{% translate "Өткен сессиялар" %}</div>
-            <ul class="list-group list-group-flush">
-                {% for row in past %}
-                    <li class="list-group-item">
-                        <div class="fw-semibold">{{ row.session.title }}</div>
-                        <div class="small text-muted">
-                            {{ row.session.opens_at|date:"d.m.Y, H:i" }} – {{ row.session.closes_at|date:"d.m.Y, H:i" }}
-                        </div>
-                        {% if row.attempt %}
-                            <a class="btn btn-sm btn-outline-primary mt-1" href="{% url 'quiz:attempt_result' row.attempt.pk %}">{% translate "Нәтиже" %}</a>
-                        {% else %}
-                            <span class="badge text-bg-light border">{% translate "Тапсырылмады" %}</span>
-                        {% endif %}
-                    </li>
-                {% empty %}
-                    <li class="list-group-item text-muted">{% translate "Өткен сессия жоқ." %}</li>
-                {% endfor %}
-            </ul>
+            {% translate "Өткен сессия жоқ." as empty_text %}
+            {% include "quiz/_session_carousel.html" with carousel_id="past-sessions" slides=past_slides item_template="quiz/_session_past_item.html" empty_text=empty_text %}
         </div>
     </div>
 </div>

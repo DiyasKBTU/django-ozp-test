@@ -1,0 +1,18 @@
+{% load i18n %}
+{# Кабинет: бір сессияның жолы (row — services.dashboard_sessions жолы) #}
+<li class="list-group-item">
+    <div class="fw-semibold">{{ row.session.title }}</div>
+    <div class="small text-muted">
+        {{ row.session.opens_at|date:"d.m.Y, H:i" }} – {{ row.session.closes_at|date:"d.m.Y, H:i" }}
+        · {% blocktranslate with minutes=row.session.subject.duration_minutes %}{{ minutes }} минут{% endblocktranslate %}
+    </div>
+    <div class="small">
+        {% with days=row.opens_in.days hours=row.opens_in.hours minutes=row.opens_in.minutes %}
+            {% if days %}
+                {% blocktranslate %}Ашылуына қалды: {{ days }} күн {{ hours }} сағ.{% endblocktranslate %}
+            {% else %}
+                {% blocktranslate %}Ашылуына қалды: {{ hours }} сағ. {{ minutes }} мин.{% endblocktranslate %}
+            {% endif %}
+        {% endwith %}
+    </div>
+</li>

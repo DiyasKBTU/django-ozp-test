@@ -1,0 +1,17 @@
+{% load i18n %}
+{# Кабинет: бір сессияның жолы (row — services.dashboard_sessions жолы) #}
+<li class="list-group-item">
+    <div class="fw-semibold">{{ row.session.title }}</div>
+    <div class="small text-muted mb-2">
+        {% blocktranslate with closes=row.session.closes_at|date:"d.m.Y, H:i" %}Жабылады: {{ closes }}{% endblocktranslate %}
+        · {% blocktranslate with minutes=row.session.subject.duration_minutes %}{{ minutes }} минут{% endblocktranslate %}
+    </div>
+    {% if row.attempt.status == "finished" %}
+        <span class="badge text-bg-secondary">{% translate "Тапсырылды" %}</span>
+        <a class="btn btn-sm btn-outline-primary ms-1" href="{% url 'quiz:attempt_result' row.attempt.pk %}">{% translate "Нәтиже" %}</a>
+    {% elif row.attempt %}
+        <a class="btn btn-sm btn-warning" href="{% url 'quiz:session_start' row.session.pk %}">{% translate "Жалғастыру" %}</a>
+    {% else %}
+        <a class="btn btn-sm btn-success" href="{% url 'quiz:session_start' row.session.pk %}">{% translate "Бастау" %}</a>
+    {% endif %}
+</li>

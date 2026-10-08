@@ -1,0 +1,38 @@
+{% load i18n %}
+{# Кабинеттегі сессиялар тізімі: әр слайдта 2 сессия (services.SESSIONS_PER_SLIDE). #}
+{# Слайд біреуден көп болса — төменде «‹ • • ›» ауыстырғыш (Bootstrap карусель, автоайналымсыз). #}
+{# Параметрлер: carousel_id, slides (слайдтар тізімі), item_template (бір сессияның жолы), empty_text. #}
+{% if slides %}
+    <div id="{{ carousel_id }}" class="carousel slide session-carousel" data-bs-interval="false">
+        <div class="carousel-inner">
+            {% for slide in slides %}
+                <div class="carousel-item{% if forloop.first %} active{% endif %}">
+                    <ul class="list-group list-group-flush">
+                        {% for row in slide %}{% include item_template %}{% endfor %}
+                    </ul>
+                </div>
+            {% endfor %}
+        </div>
+        {% if slides|length > 1 %}
+            <div class="d-flex align-items-center justify-content-center gap-2 border-top py-2">
+                <button class="btn btn-sm btn-outline-secondary" type="button"
+                        data-bs-target="#{{ carousel_id }}" data-bs-slide="prev"
+                        aria-label="{% translate 'Алдыңғы' %}">&lsaquo;</button>
+                <div class="carousel-indicators">
+                    {% for slide in slides %}
+                        <button type="button" data-bs-target="#{{ carousel_id }}" data-bs-slide-to="{{ forloop.counter0 }}"
+                                aria-label="{{ forloop.counter }} / {{ slides|length }}"
+                                {% if forloop.first %}class="active" aria-current="true"{% endif %}></button>
+                    {% endfor %}
+                </div>
+                <button class="btn btn-sm btn-outline-secondary" type="button"
+                        data-bs-target="#{{ carousel_id }}" data-bs-slide="next"
+                        aria-label="{% translate 'Келесі' %}">&rsaquo;</button>
+            </div>
+        {% endif %}
+    </div>
+{% else %}
+    <ul class="list-group list-group-flush">
+        <li class="list-group-item text-muted">{{ empty_text }}</li>
+    </ul>
+{% endif %}

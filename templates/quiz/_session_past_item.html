@@ -1,0 +1,13 @@
+{% load i18n %}
+{# Кабинет: бір сессияның жолы (row — services.dashboard_sessions жолы) #}
+<li class="list-group-item">
+    <div class="fw-semibold">{{ row.session.title }}</div>
+    <div class="small text-muted">
+        {{ row.session.opens_at|date:"d.m.Y, H:i" }} – {{ row.session.closes_at|date:"d.m.Y, H:i" }}
+    </div>
+    {% if row.attempt %}
+        <a class="btn btn-sm btn-outline-primary mt-1" href="{% url 'quiz:attempt_result' row.attempt.pk %}">{% translate "Нәтиже" %}</a>
+    {% else %}
+        <span class="badge text-bg-light border">{% translate "Тапсырылмады" %}</span>
+    {% endif %}
+</li>
