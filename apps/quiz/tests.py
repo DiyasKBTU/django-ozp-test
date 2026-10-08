@@ -1435,13 +1435,11 @@ class QuestionPageTests(TakeTestCase):
         item = self.attempt.items.get(order=41)
         response = self.client.get(self.question_url(self.attempt, 41))
         self.assertEqual(response.status_code, 200)
-        # Контекст мәтіні сұрақтың үстінде
+        # Контекст мәтіні 41-сұрақ блогында, сұрақтың үстінде
         content = response.content.decode()
-        self.assertIn(escape(item.question.context.title), content)
-        self.assertLess(
-            content.index(escape(item.question.context.title)),
-            content.index('name="answer"'),
-        )
+        block_start = content.index('id="question-41"')
+        title_at = content.index(escape(item.question.context.title), block_start)
+        self.assertLess(title_at, content.index('name="answer"', block_start))
         # 1–50 навигация, алдыңғы/келесі
         for number in [1, 40, 42, 50]:
             self.assertContains(response, f'href="{self.question_url(self.attempt, number)}"')
@@ -1456,11 +1454,9 @@ class QuestionPageTests(TakeTestCase):
     def test_answers_are_shown_in_shuffled_order(self):
         item = self.attempt.items.get(order=1)
         response = self.client.get(self.question_url(self.attempt, 1))
-        ids = [answer["id"] for answer in response.context["answers"]]
-        self.assertEqual(ids, item.answer_order)
-        self.assertEqual(
-            [answer["letter"] for answer in response.context["answers"]], ["A", "B", "C", "D"]
-        )
+        answers = response.context["questions"][0]["answers"]
+        self.assertEqual([answer["id"] for answer in answers], item.answer_order)
+        self.assertEqual([answer["letter"] for answer in answers], ["A", "B", "C", "D"])
 
     def test_code_indentation_is_kept_in_pre(self):
         item = self.attempt.items.get(order=7)
@@ -1476,9 +1472,10 @@ class QuestionPageTests(TakeTestCase):
                 self.assertNotContains(response, "is_correct")
                 self.assertNotContains(response, "list-group-item-success")
                 self.assertNotContains(response, "дұрыс</span>")
-                # Шаблонға тек мәтін мен id жетеді
-                for answer in response.context["answers"]:
-                    self.assertEqual(set(answer), {"letter", "id", "text", "image"})
+                # Шаблонға (барлық 50 сұрақтың) тек мәтін, сурет пен id жетеді
+                for row in response.context["questions"]:
+                    for answer in row["answers"]:
+                        self.assertEqual(set(answer), {"letter", "id", "text", "image"})
         # Аяқтау беті де дұрыс жауапты көрсетпейді
         response = self.client.get(reverse("quiz:attempt_finish", args=[self.attempt.pk]))
         self.assertNotContains(response, "list-group-item-success")
@@ -1500,7 +1497,7 @@ class QuestionPageTests(TakeTestCase):
         response = self.client.get(self.question_url(self.attempt, 3))
         self.assertRegex(
             response.content.decode(),
-            rf'value="{correct.pk}"\s+onchange="this.form.submit\(\)"\s+checked',
+            rf'value="{correct.pk}"\s+onchange="[^"]*"\s+checked',
         )
         answered = [cell["number"] for cell in response.context["navigation"] if cell["answered"]]
         self.assertEqual(answered, [3])
@@ -3562,3 +3559,123 @@ class DashboardCarouselTests(StudentTestCase):
             )
         first_slide = dashboard_sessions(self.student)["open_slides"][0]
         self.assertEqual(first_slide[0]["session"], todo)
+
+
+# ---------- Тест беті AJAX-пен және тест кезінде шығуға тыйым ----------
+
+
+class AjaxAttemptTests(TakeTestCase):
+    """Тест беті бетті қайта жүктемей жұмыс істейді: бір бетте 50 сұрақ, жауап — JSON."""
+
+    AJAX = {"HTTP_X_REQUESTED_WITH": "XMLHttpRequest"}
+
+    def setUp(self):
+        super().setUp()
+        self.attempt = self.new_attempt()
+
+    def ajax_answer(self, number, answer_id):
+        return self.client.post(
+            self.question_url(self.attempt, number), {"answer": answer_id}, **self.AJAX
+        )
+
+    def test_page_holds_all_questions_one_visible(self):
+        response = self.client.get(self.question_url(self.attempt, 7))
+        content = response.content.decode()
+        self.assertEqual(content.count('class="question-block'), QUESTIONS_TOTAL)
+        # Тек 7-сұрақ көрінеді, қалғаны жасырын
+        self.assertEqual(content.count('class="question-block"'), 1)
+        self.assertIn('id="question-7" class="question-block"', content)
+        self.assertContains(response, "js/attempt.js")
+        self.assertContains(response, 'data-current="7"')
+
+    def test_ajax_answer_returns_json(self):
+        item = self.attempt.items.get(order=5)
+        response = self.ajax_answer(5, self.wrong_answer(item).pk)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"saved": True, "unanswered": QUESTIONS_TOTAL - 1})
+        item.refresh_from_db()
+        self.assertEqual(item.selected, self.wrong_answer(item))
+
+        # Жауапты өзгерту — сан өзгермейді
+        response = self.ajax_answer(5, self.correct_answer(item).pk)
+        self.assertEqual(response.json()["unanswered"], QUESTIONS_TOTAL - 1)
+        item.refresh_from_db()
+        self.assertEqual(item.selected, self.correct_answer(item))
+
+    def test_ajax_response_has_no_correct_answer(self):
+        item = self.attempt.items.get(order=2)
+        response = self.ajax_answer(2, self.wrong_answer(item).pk)
+        self.assertEqual(set(response.json()), {"saved", "unanswered"})
+
+    def test_ajax_invalid_answer(self):
+        other = self.attempt.items.get(order=2)
+        response = self.ajax_answer(1, self.correct_answer(other).pk)
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("error", response.json())
+        self.assertIsNone(self.attempt.items.get(order=1).selected)
+
+    def test_ajax_after_deadline_redirects_to_result(self):
+        self.expire(self.attempt)
+        item = self.attempt.items.get(order=1)
+        response = self.ajax_answer(1, self.correct_answer(item).pk)
+        result_url = reverse("quiz:attempt_result", args=[self.attempt.pk])
+        self.assertEqual(response.json(), {"redirect": result_url})
+        self.attempt.refresh_from_db()
+        self.assertEqual(self.attempt.status, Attempt.Status.FINISHED)
+        item.refresh_from_db()
+        self.assertIsNone(item.selected)
+
+    def test_ajax_finished_attempt_redirects(self):
+        finish_attempt(self.attempt)
+        item = self.attempt.items.get(order=1)
+        response = self.ajax_answer(1, self.correct_answer(item).pk)
+        self.assertEqual(
+            response.json(), {"redirect": reverse("quiz:attempt_result", args=[self.attempt.pk])}
+        )
+
+    def test_foreign_attempt_is_404_for_ajax(self):
+        other = User.objects.create_user(username="other", password="pass12345")
+        self.client.force_login(other)
+        item = self.attempt.items.get(order=1)
+        self.assertEqual(self.ajax_answer(1, self.correct_answer(item).pk).status_code, 404)
+
+
+class LogoutDuringAttemptTests(TakeTestCase):
+    """Тест жүріп жатқанда аккаунттан шығуға болмайды."""
+
+    def test_logout_is_blocked_while_attempt_in_progress(self):
+        attempt = self.new_attempt()
+        response = self.client.post(reverse("accounts:logout"))
+        # Хабарлама оқылмай тұрсын (assertRedirects бетті өзі ашып қояды)
+        self.assertRedirects(
+            response, self.question_url(attempt, 1), fetch_redirect_response=False
+        )
+        self.assertIn("_auth_user_id", self.client.session)
+        response = self.client.get(self.question_url(attempt, 1))
+        self.assertContains(response, "Тест аяқталмай тұрып аккаунттан шығуға болмайды")
+
+    def test_navbar_hides_logout_form_during_attempt(self):
+        attempt = self.new_attempt()
+        response = self.client.get(reverse("quiz:dashboard"))
+        self.assertNotContains(response, f'action="{reverse("accounts:logout")}"')
+        self.assertContains(response, "Шығу үшін алдымен тестті аяқтаңыз")
+        # Басқа беттен тестке оралу сілтемесі
+        self.assertContains(response, self.question_url(attempt, 1))
+
+    def test_logout_after_finish(self):
+        attempt = self.new_attempt()
+        finish_attempt(attempt)
+        response = self.client.get(reverse("quiz:dashboard"))
+        self.assertContains(response, f'action="{reverse("accounts:logout")}"')
+        response = self.client.post(reverse("accounts:logout"))
+        self.assertRedirects(response, reverse("quiz:home"))
+        self.assertNotIn("_auth_user_id", self.client.session)
+
+    def test_logout_after_deadline(self):
+        attempt = self.new_attempt()
+        self.expire(attempt)
+        response = self.client.post(reverse("accounts:logout"))
+        self.assertRedirects(response, reverse("quiz:home"))
+
+    def test_logout_requires_post(self):
+        self.assertEqual(self.client.get(reverse("accounts:logout")).status_code, 405)

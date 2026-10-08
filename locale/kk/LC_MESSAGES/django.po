@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-07 18:35+0500\n"
+"POT-Creation-Date: 2026-10-08 10:43+0500\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -43,7 +43,7 @@ msgstr ""
 msgid "Қолданушылар мен топтар"
 msgstr ""
 
-#: .\apps\accounts\forms.py:13 .\apps\quiz\services.py:823
+#: .\apps\accounts\forms.py:13 .\apps\quiz\services.py:875
 msgid "Логин"
 msgstr ""
 
@@ -160,6 +160,11 @@ msgstr ""
 msgid "Тек сандардан тұрмауы керек."
 msgstr ""
 
+#: .\apps\accounts\views.py:47
+msgid ""
+"Тест аяқталмай тұрып аккаунттан шығуға болмайды. Алдымен тестті аяқтаңыз."
+msgstr ""
+
 #: .\apps\quiz\admin.py:151 .\apps\quiz\models.py:202 .\apps\quiz\models.py:287
 msgid "мәтіні"
 msgstr ""
@@ -270,8 +275,8 @@ msgstr ""
 msgid "Бұл топтар басқа пәнге жатады: %(groups)s"
 msgstr ""
 
-#: .\apps\quiz\forms.py:416 .\apps\quiz\services.py:827
-#: .\templates\quiz\dashboard.html:117
+#: .\apps\quiz\forms.py:416 .\apps\quiz\services.py:879
+#: .\templates\quiz\dashboard.html:63
 msgid "Тест тілі"
 msgstr ""
 
@@ -279,8 +284,8 @@ msgstr ""
 msgid "Сұрақтар тілі"
 msgstr ""
 
-#: .\apps\quiz\forms.py:461 .\apps\quiz\services.py:826
-#: .\templates\quiz\dashboard.html:116 .\templates\teacher\results.html:34
+#: .\apps\quiz\forms.py:461 .\apps\quiz\services.py:878
+#: .\templates\quiz\dashboard.html:62 .\templates\teacher\results.html:34
 msgid "Сессия"
 msgstr ""
 
@@ -288,7 +293,7 @@ msgstr ""
 msgid "Барлық сессия"
 msgstr ""
 
-#: .\apps\quiz\forms.py:467 .\apps\quiz\services.py:824
+#: .\apps\quiz\forms.py:467 .\apps\quiz\services.py:876
 #: .\templates\teacher\results.html:33
 msgid "Топ"
 msgstr ""
@@ -321,11 +326,11 @@ msgstr ""
 msgid "Мәтін немесе код"
 msgstr ""
 
-#: .\apps\quiz\models.py:20 .\config\settings.py:125
+#: .\apps\quiz\models.py:20 .\config\settings.py:127
 msgid "Қазақша"
 msgstr ""
 
-#: .\apps\quiz\models.py:21 .\config\settings.py:126
+#: .\apps\quiz\models.py:21 .\config\settings.py:128
 msgid "Орысша"
 msgstr ""
 
@@ -539,7 +544,7 @@ msgstr ""
 msgid "Жүріп жатыр"
 msgstr ""
 
-#: .\apps\quiz\models.py:360 .\apps\quiz\services.py:829
+#: .\apps\quiz\models.py:360 .\apps\quiz\services.py:881
 msgid "Аяқталды"
 msgstr ""
 
@@ -600,52 +605,52 @@ msgstr ""
 msgid "нұсқадағы сұрақтар"
 msgstr ""
 
-#: .\apps\quiz\services.py:318
+#: .\apps\quiz\services.py:340
 #, python-format
 msgid ""
 "Банкте «%(language)s» тіліндегі сұрақтар жеткіліксіз, тестті бастау мүмкін "
 "емес. Оқытушыға хабарлаңыз."
 msgstr ""
 
-#: .\apps\quiz\services.py:584 .\templates\quiz\session_start.html:43
+#: .\apps\quiz\services.py:606 .\templates\quiz\session_start.html:43
 msgid "Бұл сессия қазір ашық емес."
 msgstr ""
 
-#: .\apps\quiz\services.py:586 .\apps\quiz\services.py:602
+#: .\apps\quiz\services.py:608 .\apps\quiz\services.py:624
 msgid "Сіз бұл сессияда тестті бұрын бастағансыз."
 msgstr ""
 
-#: .\apps\quiz\services.py:822 .\templates\teacher\results.html:32
+#: .\apps\quiz\services.py:874 .\templates\teacher\results.html:32
 msgid "Студент"
 msgstr ""
 
-#: .\apps\quiz\services.py:825 .\templates\teacher\_subject_switcher.html:6
+#: .\apps\quiz\services.py:877 .\templates\teacher\_subject_switcher.html:6
 #: .\templates\teacher\_subject_switcher.html:18
 msgid "Пән"
 msgstr ""
 
-#: .\apps\quiz\services.py:828 .\templates\teacher\results.html:36
+#: .\apps\quiz\services.py:880 .\templates\teacher\results.html:36
 msgid "Басталды"
 msgstr ""
 
-#: .\apps\quiz\services.py:830
+#: .\apps\quiz\services.py:882
 msgid "Күйі"
 msgstr ""
 
-#: .\apps\quiz\services.py:831 .\templates\quiz\result.html:32
+#: .\apps\quiz\services.py:883 .\templates\quiz\result.html:32
 #: .\templates\teacher\results.html:37
 msgid "Балл"
 msgstr ""
 
-#: .\apps\quiz\services.py:832 .\templates\quiz\result.html:38
+#: .\apps\quiz\services.py:884 .\templates\quiz\result.html:38
 msgid "Пайыз"
 msgstr ""
 
-#: .\apps\quiz\services.py:833 .\templates\teacher\results.html:39
+#: .\apps\quiz\services.py:885 .\templates\teacher\results.html:39
 msgid "Уақыт (мин)"
 msgstr ""
 
-#: .\apps\quiz\services.py:979
+#: .\apps\quiz\services.py:1031
 msgid "Бұл тақырып бойынша таңдалған тілде сұрақ әлі жоқ."
 msgstr ""
 
@@ -671,21 +676,21 @@ msgstr ""
 msgid "Контекст сақталды."
 msgstr ""
 
-#: .\apps\quiz\views.py:128 .\apps\quiz\views.py:253
+#: .\apps\quiz\views.py:139 .\apps\quiz\views.py:270
 msgid "Жауап нұсқасын таңдаңыз."
 msgstr ""
 
-#: .\apps\quiz\views.py:132
+#: .\apps\quiz\views.py:146
 msgid "Тест уақыты бітті, жауап қабылданбады."
 msgstr ""
 
-#: .\apps\quiz\views.py:259
+#: .\apps\quiz\views.py:276
 msgid "Сұрақ банктен өшірілген. Жаттығуды қайта бастаңыз."
 msgstr ""
 
 #: .\templates\accounts\login.html:4 .\templates\accounts\login.html:10
 #: .\templates\accounts\login.html:18 .\templates\accounts\register.html:20
-#: .\templates\base.html:103 .\templates\quiz\home.html:32
+#: .\templates\base.html:132 .\templates\quiz\home.html:32
 msgid "Кіру"
 msgstr ""
 
@@ -695,7 +700,7 @@ msgstr ""
 
 #: .\templates\accounts\login.html:21 .\templates\accounts\register.html:4
 #: .\templates\accounts\register.html:10 .\templates\accounts\register.html:17
-#: .\templates\base.html:104 .\templates\quiz\home.html:33
+#: .\templates\base.html:133 .\templates\quiz\home.html:33
 msgid "Тіркелу"
 msgstr ""
 
@@ -707,50 +712,112 @@ msgstr ""
 msgid "ПББ тест платформасы"
 msgstr ""
 
-#: .\templates\base.html:42
+#: .\templates\base.html:61
 msgid "ПББ тест"
 msgstr ""
 
-#: .\templates\base.html:44
+#: .\templates\base.html:63
 msgid "Мәзір"
 msgstr ""
 
-#: .\templates\base.html:53 .\templates\quiz\_practice_navigation.html:3
-#: .\templates\quiz\question.html:18 .\templates\teacher\context_list.html:20
+#: .\templates\base.html:72 .\templates\quiz\_practice_navigation.html:3
+#: .\templates\quiz\question.html:24 .\templates\teacher\context_list.html:20
 #: .\templates\teacher\question_list.html:4
 #: .\templates\teacher\question_list.html:9
 msgid "Сұрақтар"
 msgstr ""
 
-#: .\templates\base.html:56 .\templates\teacher\bank.html:63
+#: .\templates\base.html:75 .\templates\teacher\bank.html:63
 #: .\templates\teacher\context_list.html:4
 #: .\templates\teacher\context_list.html:9
 msgid "Контексттер"
 msgstr ""
 
-#: .\templates\base.html:59
+#: .\templates\base.html:78
 msgid "Банк"
 msgstr ""
 
-#: .\templates\base.html:62 .\templates\teacher\results.html:4
+#: .\templates\base.html:81 .\templates\teacher\results.html:4
 #: .\templates\teacher\results.html:8
 msgid "Нәтижелер"
 msgstr ""
 
-#: .\templates\base.html:65
+#: .\templates\base.html:84
 msgid "Admin"
 msgstr ""
 
-#: .\templates\base.html:69 .\templates\quiz\dashboard.html:4
+#: .\templates\base.html:88 .\templates\quiz\dashboard.html:4
 msgid "Кабинет"
 msgstr ""
 
-#: .\templates\base.html:72
+#: .\templates\base.html:91
 msgid "Жаттығу"
 msgstr ""
 
-#: .\templates\base.html:100
+#: .\templates\base.html:119 .\templates\quiz\finish.html:33
+msgid "Тестке оралу"
+msgstr ""
+
+#: .\templates\base.html:121
+msgid "Шығу үшін алдымен тестті аяқтаңыз"
+msgstr ""
+
+#: .\templates\base.html:122 .\templates\base.html:128
 msgid "Шығу"
+msgstr ""
+
+#: .\templates\quiz\_session_carousel.html:20
+#: .\templates\quiz\practice_question.html:58 .\templates\quiz\question.html:67
+msgid "Алдыңғы"
+msgstr ""
+
+#: .\templates\quiz\_session_carousel.html:30
+#: .\templates\quiz\practice_question.html:61 .\templates\quiz\question.html:71
+msgid "Келесі"
+msgstr ""
+
+#: .\templates\quiz\_session_open_item.html:6
+#, python-format
+msgid "Жабылады: %(closes)s"
+msgstr ""
+
+#: .\templates\quiz\_session_open_item.html:7
+#: .\templates\quiz\_session_upcoming_item.html:7 .\templates\quiz\home.html:15
+#, python-format
+msgid "%(minutes)s минут"
+msgstr ""
+
+#: .\templates\quiz\_session_open_item.html:10
+msgid "Тапсырылды"
+msgstr ""
+
+#: .\templates\quiz\_session_open_item.html:11
+#: .\templates\quiz\_session_past_item.html:9
+#: .\templates\quiz\dashboard.html:83
+msgid "Нәтиже"
+msgstr ""
+
+#: .\templates\quiz\_session_open_item.html:13
+#: .\templates\quiz\dashboard.html:85
+msgid "Жалғастыру"
+msgstr ""
+
+#: .\templates\quiz\_session_open_item.html:15
+msgid "Бастау"
+msgstr ""
+
+#: .\templates\quiz\_session_past_item.html:11
+msgid "Тапсырылмады"
+msgstr ""
+
+#: .\templates\quiz\_session_upcoming_item.html:12
+#, python-format
+msgid "Ашылуына қалды: %(days)s күн %(hours)s сағ."
+msgstr ""
+
+#: .\templates\quiz\_session_upcoming_item.html:14
+#, python-format
+msgid "Ашылуына қалды: %(hours)s сағ. %(minutes)s мин."
 msgstr ""
 
 #: .\templates\quiz\_timer.html:4
@@ -788,86 +855,44 @@ msgstr ""
 msgid "Ашық сессиялар"
 msgstr ""
 
-#: .\templates\quiz\dashboard.html:35
-#, python-format
-msgid "Жабылады: %(closes)s"
-msgstr ""
-
-#: .\templates\quiz\dashboard.html:36 .\templates\quiz\dashboard.html:64
-#: .\templates\quiz\home.html:15
-#, python-format
-msgid "%(minutes)s минут"
-msgstr ""
-
-#: .\templates\quiz\dashboard.html:39
-msgid "Тапсырылды"
-msgstr ""
-
-#: .\templates\quiz\dashboard.html:40 .\templates\quiz\dashboard.html:95
-#: .\templates\quiz\dashboard.html:137
-msgid "Нәтиже"
-msgstr ""
-
-#: .\templates\quiz\dashboard.html:42 .\templates\quiz\dashboard.html:139
-msgid "Жалғастыру"
-msgstr ""
-
-#: .\templates\quiz\dashboard.html:44
-msgid "Бастау"
-msgstr ""
-
-#: .\templates\quiz\dashboard.html:48
+#: .\templates\quiz\dashboard.html:30
 msgid "Қазір ашық сессия жоқ."
 msgstr ""
 
-#: .\templates\quiz\dashboard.html:57
+#: .\templates\quiz\dashboard.html:38
 msgid "Алдағы сессиялар"
 msgstr ""
 
-#: .\templates\quiz\dashboard.html:69
-#, python-format
-msgid "Ашылуына қалды: %(days)s күн %(hours)s сағ."
-msgstr ""
-
-#: .\templates\quiz\dashboard.html:71
-#, python-format
-msgid "Ашылуына қалды: %(hours)s сағ. %(minutes)s мин."
-msgstr ""
-
-#: .\templates\quiz\dashboard.html:77
+#: .\templates\quiz\dashboard.html:39
 msgid "Алдағы сессия жоқ."
 msgstr ""
 
-#: .\templates\quiz\dashboard.html:86
+#: .\templates\quiz\dashboard.html:47
 msgid "Өткен сессиялар"
 msgstr ""
 
-#: .\templates\quiz\dashboard.html:97
-msgid "Тапсырылмады"
-msgstr ""
-
-#: .\templates\quiz\dashboard.html:101
+#: .\templates\quiz\dashboard.html:48
 msgid "Өткен сессия жоқ."
 msgstr ""
 
-#: .\templates\quiz\dashboard.html:109
+#: .\templates\quiz\dashboard.html:55
 msgid "Менің тесттерім"
 msgstr ""
 
-#: .\templates\quiz\dashboard.html:115
+#: .\templates\quiz\dashboard.html:61
 msgid "Күні"
 msgstr ""
 
-#: .\templates\quiz\dashboard.html:118
+#: .\templates\quiz\dashboard.html:64
 msgid "Балы"
 msgstr ""
 
-#: .\templates\quiz\dashboard.html:148
+#: .\templates\quiz\dashboard.html:94
 msgid "Сіз әлі тест тапсырған жоқсыз."
 msgstr ""
 
 #: .\templates\quiz\finish.html:4 .\templates\quiz\finish.html:9
-#: .\templates\quiz\question.html:61
+#: .\templates\quiz\question.html:73
 msgid "Тестті аяқтау"
 msgstr ""
 
@@ -890,10 +915,6 @@ msgstr ""
 
 #: .\templates\quiz\finish.html:32
 msgid "Иә, тестті аяқтау"
-msgstr ""
-
-#: .\templates\quiz\finish.html:33
-msgid "Тестке оралу"
 msgstr ""
 
 #: .\templates\quiz\home.html:6
@@ -930,7 +951,8 @@ msgid "Кабинетке өту"
 msgstr ""
 
 #: .\templates\quiz\practice_question.html:15 .\templates\quiz\question.html:4
-#: .\templates\quiz\question.html:28 .\templates\quiz\result.html:112
+#: .\templates\quiz\question.html:36 .\templates\quiz\question.html:38
+#: .\templates\quiz\result.html:112
 #, python-format
 msgid "%(number)s-сұрақ"
 msgstr ""
@@ -945,14 +967,6 @@ msgstr ""
 
 #: .\templates\quiz\practice_question.html:50
 msgid "Жауап беру"
-msgstr ""
-
-#: .\templates\quiz\practice_question.html:58 .\templates\quiz\question.html:56
-msgid "Алдыңғы"
-msgstr ""
-
-#: .\templates\quiz\practice_question.html:61 .\templates\quiz\question.html:59
-msgid "Келесі"
 msgstr ""
 
 #: .\templates\quiz\practice_question.html:63
@@ -1014,17 +1028,20 @@ msgstr ""
 msgid "Алдыңғы жаттығуға оралу"
 msgstr ""
 
-#: .\templates\quiz\question.html:11
-#, python-format
-msgid "Жауап берілмеген сұрақтар: %(unanswered_count)s / %(total)s"
+#: .\templates\quiz\question.html:10
+msgid "Байланыс үзілді: жауап сақталмады. Нұсқаны қайта таңдаңыз."
 msgstr ""
 
-#: .\templates\quiz\question.html:46 .\templates\teacher\context_form.html:29
+#: .\templates\quiz\question.html:17
+msgid "Жауап берілмеген сұрақтар:"
+msgstr ""
+
+#: .\templates\quiz\question.html:57 .\templates\teacher\context_form.html:29
 #: .\templates\teacher\question_form.html:84
 msgid "Сақтау"
 msgstr ""
 
-#: .\templates\quiz\question.html:50
+#: .\templates\quiz\question.html:60
 msgid "Жауабыңыз сақталды. Аяқтағанға дейін өзгертуге болады."
 msgstr ""
 

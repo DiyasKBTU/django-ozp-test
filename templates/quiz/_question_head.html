@@ -5,10 +5,10 @@
         <div class="fw-semibold mb-2">{{ question.context.title }}</div>
         <div>{{ question.context.text|linebreaksbr }}</div>
         {% if question.context.code %}<pre class="code-block mt-2 mb-0">{{ question.context.code }}</pre>{% endif %}
-        {% if question.context.image %}<img src="{{ question.context.image.url }}" class="img-fluid mt-2" alt="">{% endif %}
+        {% if question.context.image %}<img src="{{ question.context.image.url }}" class="img-fluid mt-2" alt="" loading="lazy">{% endif %}
     </div>
 {% endif %}
 
 <div class="mb-3">{{ question.text|linebreaksbr }}</div>
 {% if question.code %}<pre class="code-block">{{ question.code }}</pre>{% endif %}
-{% if question.image %}<img src="{{ question.image.url }}" class="img-fluid mb-3" alt="">{% endif %}
+{% if question.image %}<img src="{{ question.image.url }}" class="img-fluid mb-3" alt="" loading="lazy">{% endif %}

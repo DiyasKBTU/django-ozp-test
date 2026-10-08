@@ -17,7 +17,8 @@ urlpatterns = [
         ),
         name="login",
     ),
-    # Django 5: шығу тек POST арқылы (навигациядағы «Шығу» батырмасы — форма)
-    path("logout/", auth_views.LogoutView.as_view(), name="logout"),
+    # Шығу тек POST арқылы (навигациядағы «Шығу» батырмасы — форма);
+    # тест жүріп жатқанда шығуға болмайды (views.logout_view)
+    path("logout/", views.logout_view, name="logout"),
     path("after-login/", views.after_login, name="after_login"),
 ]

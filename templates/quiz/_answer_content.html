@@ -4,7 +4,7 @@
     {% if answer.text %}<pre class="answer-text">{{ answer.text }}</pre>{% endif %}
     {% if answer.image %}
         <a href="{{ answer.image.url }}" target="_blank" rel="noopener"{% if answer.text %} class="d-inline-block mt-1"{% endif %}>
-            <img src="{{ answer.image.url }}" class="answer-image" alt="{{ letter }}">
+            <img src="{{ answer.image.url }}" class="answer-image" alt="{{ letter }}" loading="lazy">
         </a>
     {% endif %}
 </div>

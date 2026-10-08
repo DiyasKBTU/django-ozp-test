@@ -113,11 +113,21 @@
 
                 {% if user.is_authenticated %}
                     <span class="navbar-text small">{{ user.get_full_name|default:user.username }}</span>
-                    {# Django 5: шығу тек POST арқылы #}
-                    <form action="{% url 'accounts:logout' %}" method="post">
-                        {% csrf_token %}
-                        <button type="submit" class="btn btn-sm btn-outline-light">{% translate "Шығу" %}</button>
-                    </form>
+                    {% if active_attempt %}
+                        {# Тест жүріп жатыр: шығуға болмайды (сервер де тексереді — accounts.views.logout_view) #}
+                        {% if url_name != "attempt_question" %}
+                            <a class="btn btn-sm btn-warning" href="{% url 'quiz:attempt_question' active_attempt.pk 1 %}">{% translate "Тестке оралу" %}</a>
+                        {% endif %}
+                        <span class="d-inline-block" tabindex="0" title="{% translate 'Шығу үшін алдымен тестті аяқтаңыз' %}">
+                            <button type="button" class="btn btn-sm btn-outline-light" disabled>{% translate "Шығу" %}</button>
+                        </span>
+                    {% else %}
+                        {# Шығу тек POST арқылы #}
+                        <form action="{% url 'accounts:logout' %}" method="post">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-sm btn-outline-light">{% translate "Шығу" %}</button>
+                        </form>
+                    {% endif %}
                 {% else %}
                     <a class="btn btn-sm btn-outline-light" href="{% url 'accounts:login' %}">{% translate "Кіру" %}</a>
                     <a class="btn btn-sm btn-light" href="{% url 'accounts:register' %}">{% translate "Тіркелу" %}</a>

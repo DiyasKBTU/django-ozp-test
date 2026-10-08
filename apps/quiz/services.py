@@ -763,36 +763,66 @@ def ordered_answers(answer_order, answers_by_id):
     ]
 
 
-def question_page_data(attempt, item, now=None):
+def attempt_page_data(attempt, now=None):
     """
-    Сұрақ бетіне керек деректер: 1–50 навигация (жауап берілгені белгіленеді),
-    жауап нұсқалары, алдыңғы/келесі нөмірлер, жауап берілмегендер саны, қалған уақыт.
+    Тест бетіне керек деректер — барлық 50 сұрақ бір бетте (біреуі ғана
+    көрінеді, static/js/attempt.js бетті қайта жүктемей ауыстырады):
+    әр сұрақтың нұсқалары араласқан ретімен, таңдалған жауабы, алдыңғы/келесі
+    нөмірлері; 1–50 навигация, жауап берілмегендер саны, қалған уақыт.
     Нұсқалардың тек id-і, мәтіні мен суреті беріледі: is_correct шаблонға жетпейді.
     """
-    navigation = list(attempt.items.order_by("order").values_list("order", "selected_id"))
-    answers_by_id = Answer.objects.in_bulk(item.answer_order)
-    answers = [
-        {
-            "letter": row["letter"],
-            "id": row["answer"].pk,
-            "text": row["answer"].text,
-            "image": row["answer"].image,
-        }
-        for row in ordered_answers(item.answer_order, answers_by_id)
-    ]
-    total = len(navigation)
+    items = list(attempt.items.select_related("question__context").order_by("order"))
+    answer_ids = [answer_id for item in items for answer_id in item.answer_order]
+    answers_by_id = Answer.objects.in_bulk(answer_ids)
+    total = len(items)
+
+    questions = []
+    for item in items:
+        answers = [
+            {
+                "letter": row["letter"],
+                "id": row["answer"].pk,
+                "text": row["answer"].text,
+                "image": row["answer"].image,
+            }
+            for row in ordered_answers(item.answer_order, answers_by_id)
+        ]
+        questions.append(
+            {
+                "number": item.order,
+                "question": item.question,
+                "answers": answers,
+                "selected_id": item.selected_id,
+                "previous_number": item.order - 1 if item.order > 1 else None,
+                "next_number": item.order + 1 if item.order < total else None,
+            }
+        )
+
     return {
+        "questions": questions,
         "navigation": [
-            {"number": order, "answered": selected_id is not None}
-            for order, selected_id in navigation
+            {"number": item.order, "answered": item.selected_id is not None} for item in items
         ],
-        "answers": answers,
-        "previous_number": item.order - 1 if item.order > 1 else None,
-        "next_number": item.order + 1 if item.order < total else None,
-        "unanswered_count": sum(1 for _order, selected_id in navigation if selected_id is None),
+        "unanswered_count": sum(1 for item in items if item.selected_id is None),
         "total": total,
         "remaining_seconds": remaining_seconds(attempt, now),
     }
+
+
+def active_attempt(user, now=None):
+    """
+    Студенттің қазір жүріп жатқан тесті (мерзімі өтпеген, аяқталмаған) немесе None.
+    Тест кезінде аккаунттан шығуға болмайды (accounts.views.logout_view).
+    """
+    if now is None:
+        now = timezone.now()
+    if not user.is_authenticated:
+        return None
+    return (
+        Attempt.objects.filter(user=user, status=Attempt.Status.IN_PROGRESS, deadline__gt=now)
+        .order_by("deadline")
+        .first()
+    )
 
 
 # ---------- Оқытушының нәтижелер беті және CSV (TZ.md, 3-бөлім, 8-тармақ) ----------

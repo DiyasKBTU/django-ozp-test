@@ -1,7 +1,8 @@
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.http import Http404
+from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.utils.translation import get_language
 from django.utils.translation import gettext as _
 from django.views.decorators.cache import never_cache
@@ -11,6 +12,7 @@ from .forms import AttemptAnswerForm, PracticeStartForm, StartAttemptForm
 from .models import Attempt, Language
 from .services import (
     AttemptError,
+    attempt_page_data,
     attempt_result,
     can_see_answers,
     create_attempt,
@@ -24,7 +26,6 @@ from .services import (
     practice_answer,
     practice_question_data,
     practice_summary,
-    question_page_data,
     remaining_seconds,
     save_answer,
     start_practice,
@@ -111,34 +112,50 @@ def session_start(request, session_id):
     return render(request, "quiz/session_start.html", context)
 
 
+def is_ajax(request):
+    """Сұранысты static/js/attempt.js жіберді ме (жауап JSON болады)."""
+    return request.headers.get("x-requested-with") == "XMLHttpRequest"
+
+
 @never_cache
 @login_required
 def attempt_question(request, attempt_id, number):
-    """n-сұрақ беті: GET — көрсету, POST — жауапты сақтау (сол бетке қайтады)."""
+    """
+    Тест беті: GET — барлық сұрақ (n-сұрақ көрінеді), POST — n-сұрақтың жауабын сақтау.
+    attempt.js жауапты AJAX арқылы жібереді — оған JSON қайтарылады, бет қайта
+    жүктелмейді. JS жоқ болса — бұрынғыдай форма жіберіліп, сол бетке қайтады.
+    """
     attempt = get_own_attempt(request, attempt_id)
+    result_url = reverse("quiz:attempt_result", args=[attempt.pk])
     if attempt.status == Attempt.Status.FINISHED:
-        return redirect("quiz:attempt_result", attempt.pk)
-    item = get_object_or_404(
-        attempt.items.select_related("question__context"), order=number
-    )
+        if is_ajax(request):
+            return JsonResponse({"redirect": result_url})
+        return redirect(result_url)
+    item = get_object_or_404(attempt.items, order=number)
 
     if request.method == "POST":
         form = AttemptAnswerForm(item.answer_order, request.POST)
         if not form.is_valid():
-            messages.error(request, _("Жауап нұсқасын таңдаңыз."))
+            error = _("Жауап нұсқасын таңдаңыз.")
+            if is_ajax(request):
+                return JsonResponse({"error": error}, status=400)
+            messages.error(request, error)
         elif not save_answer(item, form.cleaned_data["answer"]):
             # Мерзім осы сәтте өтті: жауап қабылданбайды, тест аяқталады
             finish_attempt(attempt)
             messages.warning(request, _("Тест уақыты бітті, жауап қабылданбады."))
-            return redirect("quiz:attempt_result", attempt.pk)
+            if is_ajax(request):
+                return JsonResponse({"redirect": result_url})
+            return redirect(result_url)
+        elif is_ajax(request):
+            return JsonResponse({"saved": True, "unanswered": len(unanswered_numbers(attempt))})
         return redirect("quiz:attempt_question", attempt.pk, number)
 
-    context = question_page_data(attempt, item)
+    context = attempt_page_data(attempt)
     context.update(
         {
             "attempt": attempt,
-            "item": item,
-            "question": item.question,
+            "number": number,
             # Формулалар (KaTeX) тек формуласы бар пәнде қосылады
             "uses_formulas": attempt.session.subject.uses_formulas,
         }

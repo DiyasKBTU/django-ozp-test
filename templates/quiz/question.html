@@ -1,14 +1,20 @@
 {% extends "base.html" %}
 {% load i18n static %}
 
-{% block title %}{% blocktranslate with number=item.order %}{{ number }}-сұрақ{% endblocktranslate %}{% endblock %}
+{% block title %}{% blocktranslate %}{{ number }}-сұрақ{% endblocktranslate %}{% endblock %}
 
 {% block content %}
+{# Барлық сұрақ бір бетте, тек ағымдағысы көрінеді: static/js/attempt.js бетті қайта жүктемей #}
+{# ауыстырады және жауапты AJAX арқылы сақтайды. JS жоқ болса — сілтемелер мен формалар бұрынғыдай. #}
+<div id="attempt-page" data-current="{{ number }}" data-total="{{ total }}"
+     data-network-error="{% translate 'Байланыс үзілді: жауап сақталмады. Нұсқаны қайта таңдаңыз.' %}">
+
 <div class="d-flex flex-wrap align-items-center gap-3 mb-3">
     <div class="me-auto">
         <h1 class="h5 mb-1">{{ attempt.session.title }}</h1>
         <div class="small text-muted">
-            {% blocktranslate %}Жауап берілмеген сұрақтар: {{ unanswered_count }} / {{ total }}{% endblocktranslate %}
+            {# Сан attempt.js-те әр жауаптан кейін жаңарады #}
+            {% translate "Жауап берілмеген сұрақтар:" %} <span id="unanswered-count">{{ unanswered_count }}</span> / {{ total }}
         </div>
     </div>
     {% include "quiz/_timer.html" %}
@@ -17,51 +23,62 @@
 {# 1–50 навигация: жауап берілгені боялады, ағымдағысы белгіленеді #}
 <nav class="d-flex flex-wrap gap-1 mb-4" aria-label="{% translate 'Сұрақтар' %}">
     {% for cell in navigation %}
-        <a href="{% url 'quiz:attempt_question' attempt.pk cell.number %}"
-           class="btn btn-sm {% if cell.answered %}btn-primary{% else %}btn-outline-secondary{% endif %}{% if cell.number == item.order %} border-3 border-warning fw-bold{% endif %}"
+        <a href="{% url 'quiz:attempt_question' attempt.pk cell.number %}" data-question="{{ cell.number }}" data-nav="{{ cell.number }}"
+           class="btn btn-sm {% if cell.answered %}btn-primary{% else %}btn-outline-secondary{% endif %}{% if cell.number == number %} border-3 border-warning fw-bold{% endif %}"
            style="min-width: 2.6rem"
-           {% if cell.number == item.order %}aria-current="page"{% endif %}>{{ cell.number }}</a>
+           {% if cell.number == number %}aria-current="page"{% endif %}>{{ cell.number }}</a>
     {% endfor %}
 </nav>
 
-<div class="bg-white rounded shadow-sm p-4 mb-3">
-    <div class="text-muted small mb-2">{% blocktranslate with number=item.order %}{{ number }}-сұрақ{% endblocktranslate %}</div>
-    {% include "quiz/_question_head.html" %}
+{% for row in questions %}
+    <section id="question-{{ row.number }}" class="question-block{% if row.number != number %} d-none{% endif %}"
+             data-url="{% url 'quiz:attempt_question' attempt.pk row.number %}"
+             data-title="{% blocktranslate with number=row.number %}{{ number }}-сұрақ{% endblocktranslate %}">
+        <div class="bg-white rounded shadow-sm p-4 mb-3">
+            <div class="text-muted small mb-2">{% blocktranslate with number=row.number %}{{ number }}-сұрақ{% endblocktranslate %}</div>
+            {% include "quiz/_question_head.html" with question=row.question %}
 
-    {# Жауап таңдалған сәтте форма автоматты жіберіледі; JS жоқ болса — «Сақтау» батырмасы #}
-    <form method="post">
-        {% csrf_token %}
-        <div class="list-group mb-3">
-            {% for answer in answers %}
-                <label class="list-group-item list-group-item-action d-flex gap-2{% if answer.id == item.selected_id %} active{% endif %}">
-                    <input class="form-check-input flex-shrink-0 mt-1" type="radio" name="answer" value="{{ answer.id }}"
-                           onchange="this.form.submit()"
-                           {% if answer.id == item.selected_id %}checked{% endif %}>
-                    <span class="fw-semibold">{{ answer.letter }})</span>
-                    {% include "quiz/_answer_content.html" with letter=answer.letter %}
-                </label>
-            {% endfor %}
+            {# Жауап таңдалған сәтте форма жіберіледі (attempt.js — AJAX); JS жоқ болса — «Сақтау» батырмасы #}
+            <form method="post" action="{% url 'quiz:attempt_question' attempt.pk row.number %}"
+                  class="answer-form" data-number="{{ row.number }}" data-saved="{{ row.selected_id|default:'' }}">
+                {% csrf_token %}
+                <div class="list-group mb-3">
+                    {% for answer in row.answers %}
+                        <label class="list-group-item list-group-item-action d-flex gap-2{% if answer.id == row.selected_id %} active{% endif %}">
+                            <input class="form-check-input flex-shrink-0 mt-1" type="radio" name="answer" value="{{ answer.id }}"
+                                   onchange="this.form.requestSubmit ? this.form.requestSubmit() : this.form.submit()"
+                                   {% if answer.id == row.selected_id %}checked{% endif %}>
+                            <span class="fw-semibold">{{ answer.letter }})</span>
+                            {% include "quiz/_answer_content.html" with letter=answer.letter %}
+                        </label>
+                    {% endfor %}
+                </div>
+                <noscript>
+                    <button type="submit" class="btn btn-primary mb-3">{% translate "Сақтау" %}</button>
+                </noscript>
+            </form>
+            <div class="small text-success answer-saved{% if not row.selected_id %} d-none{% endif %}">{% translate "Жауабыңыз сақталды. Аяқтағанға дейін өзгертуге болады." %}</div>
+            <div class="small text-danger answer-error d-none" role="alert"></div>
         </div>
-        <noscript>
-            <button type="submit" class="btn btn-primary mb-3">{% translate "Сақтау" %}</button>
-        </noscript>
-    </form>
-    {% if item.selected_id %}
-        <div class="small text-success">{% translate "Жауабыңыз сақталды. Аяқтағанға дейін өзгертуге болады." %}</div>
-    {% endif %}
-</div>
 
-<div class="d-flex flex-wrap gap-2">
-    {% if previous_number %}
-        <a class="btn btn-outline-primary" href="{% url 'quiz:attempt_question' attempt.pk previous_number %}">&larr; {% translate "Алдыңғы" %}</a>
-    {% endif %}
-    {% if next_number %}
-        <a class="btn btn-outline-primary" href="{% url 'quiz:attempt_question' attempt.pk next_number %}">{% translate "Келесі" %} &rarr;</a>
-    {% endif %}
-    <a class="btn btn-danger ms-auto" href="{% url 'quiz:attempt_finish' attempt.pk %}">{% translate "Тестті аяқтау" %}</a>
+        <div class="d-flex flex-wrap gap-2">
+            {% if row.previous_number %}
+                <a class="btn btn-outline-primary" data-question="{{ row.previous_number }}"
+                   href="{% url 'quiz:attempt_question' attempt.pk row.previous_number %}">&larr; {% translate "Алдыңғы" %}</a>
+            {% endif %}
+            {% if row.next_number %}
+                <a class="btn btn-outline-primary" data-question="{{ row.next_number }}"
+                   href="{% url 'quiz:attempt_question' attempt.pk row.next_number %}">{% translate "Келесі" %} &rarr;</a>
+            {% endif %}
+            <a class="btn btn-danger ms-auto finish-link" href="{% url 'quiz:attempt_finish' attempt.pk %}">{% translate "Тестті аяқтау" %}</a>
+        </div>
+    </section>
+{% endfor %}
+
 </div>
 {% endblock %}
 
 {% block scripts %}
 <script src="{% static 'js/timer.js' %}"></script>
+<script src="{% static 'js/attempt.js' %}"></script>
 {% endblock %}

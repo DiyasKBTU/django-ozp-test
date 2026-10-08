@@ -90,6 +90,8 @@ TEMPLATES = [
                 "django.template.context_processors.i18n",
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
+                # Тест жүріп жатса — навигацияда «Шығу» бұғатталады
+                "apps.quiz.context_processors.attempt_in_progress",
             ],
         },
     },

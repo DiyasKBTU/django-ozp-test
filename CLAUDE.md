@@ -36,7 +36,8 @@
 
 ## Код жазу ережелері
 
-- **Views тек функциялар (FBV).** Класқа негізделген views жазба (тек Django-ның дайын `LoginView` / `LogoutView` / `set_language` қолданылады).
+- **Views тек функциялар (FBV).** Класқа негізделген views жазба (тек Django-ның дайын `LoginView` / `set_language` қолданылады).
+- **Тест беті AJAX-пен:** бір бетте 50 сұрақ (`services.attempt_page_data`), `static/js/attempt.js` сұрақты бетті жүктемей ауыстырады (URL — `history.pushState`) және жауапты `fetch` арқылы жібереді (`X-Requested-With: XMLHttpRequest` → view JSON қайтарады). JS жоқ болса — бұрынғыдай форма + redirect. Жаңа JS тек progressive enhancement болсын: JS-сіз де жұмыс істеуі керек.
 - **Бизнес-логика** (нұсқа құру, балл есептеу, банк толуы) — `apps/quiz/services.py`.
 - **Форма тексерулері** — `apps/quiz/forms.py` (accounts үшін `apps/accounts/forms.py`). Views ішінде логика да, тексеру де болмайды.
 - Оқытушы беттері — `apps/quiz/teacher_views.py`, `@staff_member_required` + `@subject_required` (view `request, subject, ...` алады); **барлық сұраныс таңдалған пән бойынша сүзіледі**, басқа пәннің объектісі — 404 (`get_object_or_404(subject_questions(subject), pk=pk)`). Формаларға `subject=` беріледі. Студент беттері — `@login_required`.
@@ -57,6 +58,7 @@
 - Оқытушы тек өз пәндерінің сұрақтарын, контексттерін, нәтижелерін көреді (басқа пәннікі — 404).
 - **Оқытушы тек admin арқылы қосылады** (әкімші: `is_staff` + `Profile.subjects`); сайттағы тіркелу — тек студентке, `is_staff` сырттан қойылмайды. Admin-де оқытушыға тек сессиялар мен топтар ашық (`TeacherSubjectAdminMixin`: өз пәндері ғана, өшіру — әкімшіге).
 - Сессия уақыты мен тест мерзімін тек сервер тексереді.
+- **Тест жүріп жатқанда аккаунттан шығуға болмайды:** `accounts.views.logout_view` (FBV, тек POST) `services.active_attempt` бар болса тест бетіне қайтарады; навбарда «Шығу» бұғатталып, «Тестке оралу» шығады (`quiz.context_processors.attempt_in_progress`).
 - `SECRET_KEY`, `DEBUG`, `ALLOWED_HOSTS`, `DATABASE_URL` — `.env` файлынан.
 
 ## Жергілікті орта
